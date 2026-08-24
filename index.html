@@ -164,10 +164,57 @@
         </div>
       </section>
 
-      <!-- 第 4 屏：项目台账（占位） -->
-      <section id="screen-4" class="screen placeholder-screen">
-        <h2>第 4 屏 · 项目台账</h2>
-        <p>粘贴工作清单自动整理：进度阶段、关键节点、负责人、风险项一眼看清（待开发）</p>
+      <!-- 第 4 屏：项目台账 -->
+      <section id="screen-4" class="screen">
+        <div class="proj-wrap">
+          <header class="proj-header">
+            <h2 class="proj-title">项目台账</h2>
+            <p class="proj-sub">粘贴工作清单自动整理，进度、节点、风险一眼看清</p>
+          </header>
+
+          <section class="proj-card">
+            <div class="proj-card-head">
+              <h3>粘贴工作清单</h3>
+              <div class="proj-head-actions">
+                <button id="proj-sample-btn" class="dash-ghost-btn" type="button">试一试</button>
+                <button id="proj-import-btn" class="dash-ghost-btn" type="button">从待办导入</button>
+              </div>
+            </div>
+            <textarea
+              id="proj-input"
+              class="proj-textarea"
+              placeholder="粘贴项目清单、排期、聊天记录……AI 帮你整理成台账"
+            ></textarea>
+            <div class="proj-parse-actions">
+              <button id="proj-parse-btn" class="btn-primary">整理</button>
+            </div>
+            <div id="proj-parse-status"></div>
+            <div id="proj-confirm-list"></div>
+
+            <div id="proj-import-panel" class="proj-import-panel" hidden>
+              <div class="proj-import-head">
+                <span>选择要导入的待办（未完成）</span>
+                <button id="proj-import-close" class="proj-import-close" type="button" aria-label="关闭">×</button>
+              </div>
+              <ul id="proj-import-todo-list" class="proj-import-todo-list"></ul>
+              <div class="proj-import-footer">
+                <button id="proj-import-confirm" class="btn-primary" type="button">导入所选</button>
+              </div>
+              <div id="proj-import-msg" class="proj-import-msg"></div>
+            </div>
+          </section>
+
+          <section class="proj-filters">
+            <div class="proj-stage-tabs" id="proj-stage-tabs"></div>
+            <select id="proj-owner-filter" class="proj-owner-filter">
+              <option value="all">全部负责人</option>
+            </select>
+            <input id="proj-search" class="proj-search" type="text" placeholder="搜索项目名" autocomplete="off" />
+          </section>
+
+          <section class="proj-list" id="proj-list"></section>
+          <div id="proj-empty" class="proj-empty" hidden></div>
+        </div>
       </section>
 
       <!-- 第 5 屏：会议纪要（占位） -->

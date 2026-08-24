@@ -1670,3 +1670,606 @@ html[data-theme='green'] .theme-green {
     align-items: stretch;
   }
 }
+
+/* ============================================================
+   第 4 屏：项目台账（proj-* 前缀）
+   ============================================================ */
+.proj-wrap {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+}
+
+.proj-header {
+  margin-bottom: 24px;
+}
+
+.proj-title {
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.proj-sub {
+  margin-top: 8px;
+  font-size: 15px;
+  color: var(--text-2);
+}
+
+.proj-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+.proj-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.proj-card-head h3 {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.proj-head-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.proj-textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 13px 16px;
+  font-family: inherit;
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  resize: vertical;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.proj-textarea::placeholder {
+  color: var(--text-2);
+  opacity: 0.75;
+}
+
+.proj-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.proj-parse-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+}
+
+/* ---------- 整理状态与待确认列表 ---------- */
+.proj-status {
+  margin-top: 14px;
+  padding: 18px;
+  text-align: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.proj-status-error {
+  border-color: var(--danger);
+}
+
+.proj-status-error .proj-status-icon,
+.proj-status-error .proj-status-title {
+  color: var(--danger);
+}
+
+.proj-status-success {
+  border-color: var(--accent);
+}
+
+.proj-status-icon {
+  font-size: 24px;
+}
+
+.proj-status-title {
+  margin-top: 6px;
+  font-size: 16px;
+}
+
+.proj-status-text {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.proj-status .btn-secondary {
+  margin-top: 12px;
+}
+
+.proj-spinner {
+  width: 26px;
+  height: 26px;
+  margin: 0 auto 10px;
+  border: 3px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+.proj-confirm-head {
+  margin: 14px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.proj-confirm-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.proj-confirm-name {
+  flex: 1 1 180px;
+  min-width: 0;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.proj-confirm-stage,
+.proj-confirm-date,
+.proj-confirm-owner,
+.proj-confirm-risks {
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.proj-confirm-risks {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.proj-confirm-del {
+  padding: 7px 12px;
+  font-size: 13px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+}
+
+.proj-dup-warn {
+  flex-basis: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.proj-confirm-note {
+  flex-basis: 100%;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.proj-confirm-footer {
+  margin-top: 12px;
+}
+
+/* ---------- 从待办导入面板 ---------- */
+.proj-import-panel {
+  margin-top: 14px;
+  padding: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.proj-import-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.proj-import-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 17px;
+  color: var(--text-2);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.proj-import-todo-list {
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.proj-import-todo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.proj-import-todo:hover {
+  background: var(--surface);
+}
+
+.proj-import-todo input[type='checkbox'] {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.proj-import-todo-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+}
+
+.proj-import-todo-due {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.proj-import-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+
+.proj-import-footer {
+  margin-top: 10px;
+}
+
+.proj-import-msg {
+  margin-top: 10px;
+}
+
+.proj-import-ok {
+  font-size: 13.5px;
+  color: var(--accent-strong);
+}
+
+.proj-import-warn {
+  font-size: 13.5px;
+  color: var(--danger);
+}
+
+/* ---------- 筛选区 ---------- */
+.proj-filters {
+  margin: 18px 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.proj-stage-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  flex-wrap: nowrap;
+}
+
+.proj-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 13px;
+  color: var(--text-2);
+  background: none;
+  border: none;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.proj-tab.active {
+  color: var(--accent-strong);
+  background: var(--surface);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.proj-tab-count {
+  min-width: 16px;
+  padding: 0 5px;
+  font-size: 11.5px;
+  text-align: center;
+  background: var(--surface-2);
+  border-radius: 999px;
+}
+
+.proj-tab.active .proj-tab-count {
+  background: var(--accent-soft);
+}
+
+.proj-owner-filter,
+.proj-search {
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.proj-search {
+  flex: 1;
+  min-width: 140px;
+}
+
+.proj-search:focus,
+.proj-owner-filter:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ---------- 项目卡片 ---------- */
+.proj-item {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.proj-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.proj-item.warn {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  border-left: 4px solid var(--danger);
+}
+
+.proj-item-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.proj-item-namebox {
+  flex: 1;
+  min-width: 180px;
+}
+
+.proj-item-name {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.proj-owner-tag {
+  display: inline-block;
+  padding: 3px 12px;
+  font-size: 13px;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-radius: 999px;
+}
+
+.proj-owner-tag.editable-empty {
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px dashed var(--border);
+}
+
+.proj-item-name.editable,
+.proj-owner-tag {
+  cursor: pointer;
+}
+
+.proj-inline-input {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+
+.proj-item-name .proj-inline-input {
+  width: 100%;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.proj-owner-tag .proj-inline-input {
+  width: 110px;
+  font-size: 13px;
+}
+
+.proj-del-btn {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text-2);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.proj-del-btn:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* 5 段进度条 */
+.proj-stages {
+  display: flex;
+  gap: 4px;
+  margin-top: 14px;
+}
+
+.proj-stage-seg {
+  flex: 1;
+  padding: 6px 2px;
+  font-size: 12.5px;
+  text-align: center;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.proj-stage-seg:hover {
+  border-color: var(--accent);
+}
+
+.proj-stage-seg.passed {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.proj-stage-seg.current {
+  color: #fff;
+  background: var(--accent);
+  font-weight: 600;
+}
+
+/* 元信息行 */
+.proj-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.proj-deadline.overdue {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.proj-risk-tag {
+  padding: 2px 10px;
+  font-size: 12.5px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+  border-radius: 999px;
+}
+
+.proj-todo-count {
+  padding: 2px 10px;
+  font-size: 12.5px;
+  background: var(--surface-2);
+  border-radius: 999px;
+}
+
+.proj-todo-count.warn {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.proj-empty {
+  padding: 32px 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+/* ---------- 第 4 屏响应式 ---------- */
+@media (max-width: 768px) {
+  .proj-wrap {
+    padding: 24px 14px 56px;
+  }
+
+  .proj-title {
+    font-size: 22px;
+  }
+
+  .proj-card-head {
+    flex-wrap: wrap;
+  }
+
+  .proj-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .proj-stage-tabs {
+    flex: 0 0 auto;
+  }
+
+  .proj-search {
+    min-width: 120px;
+  }
+
+  .proj-import-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    border-radius: 0;
+    padding: 20px 16px;
+    overflow-y: auto;
+  }
+
+  .proj-import-todo-list {
+    max-height: none;
+  }
+
+  .proj-stage-seg {
+    font-size: 11.5px;
+  }
+}

@@ -1,6 +1,7 @@
 import './style.css'
 import systemPrompt from './prompt.txt?raw'
 import todoParsePromptRaw from './prompt-todo-parse.txt?raw'
+import projectParsePromptRaw from './prompt-project-parse.txt?raw'
 import jobsData from '../data/jobs.json'
 
 // ===== 常量 =====
@@ -478,6 +479,7 @@ document.querySelectorAll('.screen[id]').forEach((s) => navHighlighter.observe(s
 // theme_preview      配色预览（临时，已有）
 // odb_todos          待办：{id,title,dueDate,priority,note,done,createdAt,doneAt}
 // odb_activities     动态：{type,title,time}（最多保留 50 条）
+// odb_projects       项目台账：{id,name,stage,deadline,owner,risks,todoIds,createdAt,updatedAt}
 
 // ===== 第 2 屏 DOM =====
 const dashGreetingEl = $('dash-greeting')
@@ -1007,3 +1009,522 @@ document.addEventListener('click', (e) => {
 
 renderGreeting()
 refreshDashboard()
+
+// ============================================================
+// 第 4 屏：项目台账
+// ============================================================
+// 阶段常量（内容模板：v1 固定 5 阶段，以后可扩展自定义）
+const PROJECT_STAGES = [
+  { key: 'plan', label: '大纲' },
+  { key: 'draft', label: '脚本' },
+  { key: 'shoot', label: '拍摄' },
+  { key: 'v1', label: '初稿' },
+  { key: 'launch', label: '发布' },
+]
+
+const PROJECTS_KEY = 'odb_projects'
+
+// ===== 第 4 屏 DOM =====
+const projInputEl = $('proj-input')
+const projParseBtn = $('proj-parse-btn')
+const projSampleBtn = $('proj-sample-btn')
+const projImportBtn = $('proj-import-btn')
+const projParseStatusEl = $('proj-parse-status')
+const projConfirmEl = $('proj-confirm-list')
+const projImportPanelEl = $('proj-import-panel')
+const projImportTodoListEl = $('proj-import-todo-list')
+const projImportConfirmBtn = $('proj-import-confirm')
+const projImportCloseBtn = $('proj-import-close')
+const projImportMsgEl = $('proj-import-msg')
+const projStageTabsEl = $('proj-stage-tabs')
+const projOwnerFilterEl = $('proj-owner-filter')
+const projSearchEl = $('proj-search')
+const projListEl = $('proj-list')
+const projEmptyEl = $('proj-empty')
+
+let confirmProjects = [] // 整理后待确认列表
+let projFilterStage = 'all'
+let projParsing = false
+let projImportChecked = new Set()
+
+// 第 2 屏动态图标扩展（只新增键，不改第 2 屏逻辑）
+ACT_ICONS['proj-add'] = '📁'
+ACT_ICONS['proj-del'] = '🗑️'
+
+// ===== 数据读写 =====
+function loadProjects() {
+  try {
+    return JSON.parse(localStorage.getItem(PROJECTS_KEY)) || []
+  } catch {
+    return []
+  }
+}
+
+function saveProjects(list) {
+  localStorage.setItem(PROJECTS_KEY, JSON.stringify(list))
+}
+
+// ===== 粘贴工作清单 → AI 整理 =====
+const PROJ_SAMPLE_TEXT = `项目a 短视频脚本 8月30日前交脚本 张伟
+项目A 拍摄 9月5号 张伟 人手不够可能延期
+新品发布会物料 2026/9/15截止 李娜负责
+品牌宣传片：初稿完了这周开始拍 王强 甲方场地没定有风险
+公众号改版 下周五前上线 小周
+项目a 剪辑 9月10日交付`
+
+async function parseProjects() {
+  const text = projInputEl.value.trim()
+  if (!text) {
+    projInputEl.focus()
+    return
+  }
+  if (projParsing) return
+  if (!API_KEY) {
+    renderProjStatus('key')
+    return
+  }
+  projParsing = true
+  projParseBtn.disabled = true
+  projParseBtn.textContent = '整理中…'
+  renderProjStatus('loading')
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: projectParsePromptRaw.replace('{{TODAY}}', todayStr()) },
+          { role: 'user', content: `今天是 ${todayStr()}。请整理以下工作清单：\n\n${text}` },
+        ],
+        temperature: 0.2,
+        max_tokens: 1500,
+        response_format: { type: 'json_object' },
+      }),
+    })
+    if (!res.ok) {
+      throw new Error(ERROR_MSGS[res.status] || `网络异常或服务暂时不可用（HTTP ${res.status}），请稍后重试`)
+    }
+    const data = await res.json()
+    const content = data.choices?.[0]?.message?.content
+    if (!content) throw new Error('AI 返回内容为空，请重试')
+    const parsed = parseJsonSafe(content)
+    const list = Array.isArray(parsed.projects) ? parsed.projects : []
+    if (!list.length) {
+      renderProjStatus('empty', parsed.note || '')
+      return
+    }
+    renderConfirmProjects(list)
+  } catch (err) {
+    renderProjStatus('error', err.name === 'TypeError' ? '网络异常，请检查网络后重试' : err.message)
+  } finally {
+    projParsing = false
+    projParseBtn.disabled = false
+    projParseBtn.textContent = '整理'
+  }
+}
+
+function renderProjStatus(kind, msg = '') {
+  projParseStatusEl.innerHTML = ''
+  if (kind === 'none') return
+  const card = el(
+    'div',
+    'proj-status' +
+      (kind === 'error' || kind === 'key' ? ' proj-status-error' : kind === 'success' ? ' proj-status-success' : ''),
+  )
+  if (kind === 'loading') {
+    card.append(el('div', 'proj-spinner'), el('p', 'proj-status-text', '正在整理，约需 5~10 秒…'))
+  } else if (kind === 'key') {
+    card.append(
+      el('div', 'proj-status-icon', '🔑'),
+      el('h3', 'proj-status-title', '还没配置 DeepSeek API Key'),
+      el('p', 'proj-status-text', '复制 .env.example 为 .env，填入你的 key 后刷新页面'),
+    )
+  } else if (kind === 'error') {
+    card.append(el('div', 'proj-status-icon', '⚠️'), el('h3', 'proj-status-title', '整理失败'), el('p', 'proj-status-text', msg))
+    const retry = el('button', 'btn-secondary', '重试')
+    retry.type = 'button'
+    retry.addEventListener('click', parseProjects)
+    card.append(retry)
+  } else if (kind === 'empty') {
+    card.append(el('div', 'proj-status-icon', 'ℹ️'), el('h3', 'proj-status-title', '没整理出可用的项目'), el('p', 'proj-status-text', msg || '换一段工作清单试试'))
+  } else if (kind === 'success') {
+    card.append(el('div', 'proj-status-icon', '✅'), el('p', 'proj-status-text', msg))
+  }
+  projParseStatusEl.append(card)
+}
+
+// 名称相似度（大小写/空白/标点无关）：相同或互相包含即判疑似重复
+function normalizeName(s) {
+  return s.toLowerCase().replace(/[^\w一-龥]/g, '')
+}
+
+function findDuplicateProject(name, projects) {
+  const n = normalizeName(name)
+  if (n.length < 4) return null
+  for (const p of projects) {
+    const pn = normalizeName(p.name)
+    if (pn.length < 4) continue
+    if (n === pn || n.includes(pn) || pn.includes(n)) return p
+  }
+  return null
+}
+
+// 整理结果 → 可编辑待确认列表（含疑似重复提示）
+function renderConfirmProjects(list) {
+  renderProjStatus('none')
+  confirmProjects = list.map((p) => ({
+    name: p.name || '',
+    stage: PROJECT_STAGES.some((s) => s.key === p.stage) ? p.stage : 'plan',
+    deadline: p.deadline || null,
+    owner: p.owner || '',
+    risks: Array.isArray(p.risks) ? p.risks.filter(Boolean) : [],
+    note: p.note || null,
+  }))
+  const existing = loadProjects()
+  projConfirmEl.innerHTML = ''
+  const head = el('div', 'proj-confirm-head')
+  head.append(el('span', '', `整理出 ${confirmProjects.length} 个项目，确认或修改后入库`))
+  projConfirmEl.append(head)
+  confirmProjects.forEach((c, i) => {
+    const row = el('div', 'proj-confirm-row')
+    const nameInput = el('input', 'proj-confirm-name')
+    nameInput.value = c.name
+    nameInput.placeholder = '项目名'
+    nameInput.addEventListener('input', () => {
+      c.name = nameInput.value
+    })
+    const stageSel = el('select', 'proj-confirm-stage')
+    for (const s of PROJECT_STAGES) {
+      const opt = el('option', '', s.label)
+      opt.value = s.key
+      stageSel.append(opt)
+    }
+    stageSel.value = c.stage
+    stageSel.addEventListener('change', () => {
+      c.stage = stageSel.value
+    })
+    const dateInput = el('input', 'proj-confirm-date')
+    dateInput.type = 'date'
+    dateInput.value = c.deadline || ''
+    dateInput.addEventListener('change', () => {
+      c.deadline = dateInput.value || null
+    })
+    const ownerInput = el('input', 'proj-confirm-owner')
+    ownerInput.value = c.owner
+    ownerInput.placeholder = '负责人'
+    ownerInput.addEventListener('input', () => {
+      c.owner = ownerInput.value
+    })
+    const risksInput = el('input', 'proj-confirm-risks')
+    risksInput.value = c.risks.join('，')
+    risksInput.placeholder = '风险项（逗号分隔，可空）'
+    risksInput.addEventListener('input', () => {
+      c.risks = risksInput.value.split(/[，,]/).map((r) => r.trim()).filter(Boolean)
+    })
+    const del = el('button', 'proj-confirm-del', '删除')
+    del.type = 'button'
+    del.addEventListener('click', () => {
+      confirmProjects.splice(i, 1)
+      renderConfirmProjects(confirmProjects)
+    })
+    row.append(nameInput, stageSel, dateInput, ownerInput, risksInput, del)
+    const dup = findDuplicateProject(c.name, existing)
+    if (dup) row.append(el('p', 'proj-dup-warn', `⚠ 疑似与已有项目『${dup.name}』重复，请确认是否仍要导入`))
+    if (c.note) row.append(el('p', 'proj-confirm-note', c.note))
+    projConfirmEl.append(row)
+  })
+  const footer = el('div', 'proj-confirm-footer')
+  const addBtn = el('button', 'btn-primary', '确认添加')
+  addBtn.type = 'button'
+  addBtn.addEventListener('click', confirmAddProjects)
+  footer.append(addBtn)
+  projConfirmEl.append(footer)
+}
+
+function confirmAddProjects() {
+  const projects = loadProjects()
+  const now = Date.now()
+  let added = 0
+  for (const c of confirmProjects) {
+    const name = c.name.trim()
+    if (!name) continue
+    projects.unshift({
+      id: 'p' + now + '-' + added,
+      name,
+      stage: c.stage,
+      deadline: c.deadline || null,
+      owner: c.owner.trim() || null,
+      risks: c.risks,
+      todoIds: [],
+      createdAt: now,
+      updatedAt: now,
+    })
+    added++
+  }
+  if (!added) {
+    renderProjStatus('error', '没有可添加的项目，请检查项目名')
+    return
+  }
+  saveProjects(projects)
+  confirmProjects = []
+  projConfirmEl.innerHTML = ''
+  renderProjStatus('success', `已添加 ${added} 个项目`)
+  logActivity('proj-add', `新建 ${added} 个项目`)
+  refreshProjects()
+}
+
+// ===== 从待办导入 =====
+function openImportPanel() {
+  const todos = loadTodos().filter((t) => !t.done)
+  projImportChecked.clear()
+  projImportMsgEl.innerHTML = ''
+  projImportTodoListEl.innerHTML = ''
+  if (!todos.length) {
+    projImportTodoListEl.append(el('li', 'proj-import-empty', '没有未完成的待办可导入'))
+    projImportConfirmBtn.disabled = true
+  } else {
+    for (const t of todos) {
+      const li = el('li')
+      const label = el('label', 'proj-import-todo')
+      const cb = el('input')
+      cb.type = 'checkbox'
+      cb.value = t.id
+      cb.addEventListener('change', () => {
+        if (cb.checked) projImportChecked.add(t.id)
+        else projImportChecked.delete(t.id)
+      })
+      label.append(cb, el('span', 'proj-import-todo-title', t.title))
+      if (t.dueDate) label.append(el('span', 'proj-import-todo-due', t.dueDate))
+      li.append(label)
+      projImportTodoListEl.append(li)
+    }
+    projImportConfirmBtn.disabled = false
+  }
+  projImportPanelEl.hidden = false
+}
+
+function confirmImportTodos() {
+  const todos = loadTodos()
+  const projects = loadProjects()
+  const now = Date.now()
+  let added = 0
+  const warns = []
+  for (const tid of projImportChecked) {
+    const t = todos.find((x) => x.id === tid)
+    if (!t) continue
+    const dup = projects.find((p) => (p.todoIds || []).includes(tid))
+    if (dup) {
+      warns.push(`该待办已关联项目『${dup.name}』：${t.title}`)
+      continue
+    }
+    projects.unshift({
+      id: 'p' + now + '-' + added,
+      name: t.title,
+      stage: 'plan',
+      deadline: t.dueDate || null,
+      owner: null,
+      risks: [],
+      todoIds: [tid],
+      createdAt: now,
+      updatedAt: now,
+    })
+    added++
+  }
+  saveProjects(projects)
+  projImportMsgEl.innerHTML = ''
+  if (added) {
+    logActivity('proj-add', `从待办导入 ${added} 个项目`)
+    projImportMsgEl.append(el('p', 'proj-import-ok', `已导入 ${added} 个待办为项目`))
+  }
+  for (const w of warns) projImportMsgEl.append(el('p', 'proj-import-warn', w))
+  projImportChecked.clear()
+  refreshProjects()
+  // 刷新面板勾选状态
+  for (const cb of projImportTodoListEl.querySelectorAll('input[type=checkbox]')) cb.checked = false
+}
+
+// ===== 项目卡片列表 =====
+function renderProjectList() {
+  const projects = loadProjects()
+  const todos = loadTodos()
+  const today = todayStr()
+  let list = projects
+  if (projFilterStage !== 'all') list = list.filter((p) => p.stage === projFilterStage)
+  const owner = projOwnerFilterEl.value
+  if (owner !== 'all') list = list.filter((p) => p.owner === owner)
+  const kw = projSearchEl.value.trim().toLowerCase()
+  if (kw) list = list.filter((p) => p.name.toLowerCase().includes(kw))
+  projListEl.innerHTML = ''
+  projEmptyEl.hidden = list.length > 0
+  projEmptyEl.textContent =
+    projects.length === 0 ? '还没有项目。把工作清单粘贴进来，AI 帮你整理成台账' : '没有符合筛选条件的项目'
+  for (const p of list) projListEl.append(projectCard(p, todos, today))
+}
+
+function projectCard(p, todos, today) {
+  const linked = (p.todoIds || []).map((id) => todos.find((t) => t.id === id)).filter(Boolean)
+  const linkedDone = linked.filter((t) => t.done).length
+  const linkedOverdue = linked.some((t) => !t.done && t.dueDate && t.dueDate < today)
+  const deadlineOverdue = p.deadline && p.deadline < today
+  const risky = (p.risks || []).length > 0 || linkedOverdue
+  const card = el('div', 'proj-item' + (deadlineOverdue || risky ? ' warn' : ''))
+
+  // 顶行：项目名（可编辑）+ 负责人（可编辑）+ 删除
+  const top = el('div', 'proj-item-top')
+  const nameBox = el('div', 'proj-item-namebox')
+  nameBox.append(makeEditable(p.name, 'proj-item-name', '', (v) => updateProject(p.id, { name: v })))
+  top.append(nameBox)
+  const ownerTag = makeEditable(p.owner || '', 'proj-owner-tag' + (p.owner ? '' : ' empty'), '＋负责人', (v) =>
+    updateProject(p.id, { owner: v || null }),
+  )
+  top.append(ownerTag)
+  const delBtn = el('button', 'proj-del-btn', '删除')
+  delBtn.type = 'button'
+  let armed = false
+  let timer = null
+  delBtn.addEventListener('click', () => {
+    if (!armed) {
+      armed = true
+      delBtn.textContent = '确认删除？'
+      timer = setTimeout(() => {
+        armed = false
+        delBtn.textContent = '删除'
+      }, 2500)
+      return
+    }
+    clearTimeout(timer)
+    deleteProject(p)
+  })
+  top.append(delBtn)
+  card.append(top)
+
+  // 5 段进度条：点击某段直接跳到该阶段
+  const stageIdx = PROJECT_STAGES.findIndex((s) => s.key === p.stage)
+  const bar = el('div', 'proj-stages')
+  PROJECT_STAGES.forEach((s, i) => {
+    const seg = el('button', 'proj-stage-seg' + (i < stageIdx ? ' passed' : i === stageIdx ? ' current' : ''), s.label)
+    seg.type = 'button'
+    seg.title = '点击设为「' + s.label + '」阶段'
+    seg.addEventListener('click', () => updateProject(p.id, { stage: s.key }))
+    bar.append(seg)
+  })
+  card.append(bar)
+
+  // 元信息行：关键节点 + 风险标签 + 关联待办
+  const meta = el('div', 'proj-meta')
+  if (p.deadline) {
+    const dl = el('span', 'proj-deadline' + (deadlineOverdue ? ' overdue' : ''))
+    dl.textContent = deadlineOverdue ? `关键节点 ${p.deadline} · 已逾期 ${daysBetween(p.deadline, today)} 天` : `关键节点 ${p.deadline}`
+    meta.append(dl)
+  }
+  for (const r of p.risks || []) meta.append(el('span', 'proj-risk-tag', r))
+  if (linked.length) {
+    const count = el('span', 'proj-todo-count' + (linkedOverdue ? ' warn' : ''))
+    count.textContent = `待办 ${linkedDone}/${linked.length}`
+    meta.append(count)
+  }
+  card.append(meta)
+  return card
+}
+
+// 点击文字变输入框，失焦/回车保存
+function makeEditable(value, cls, placeholder, onSave) {
+  const span = el('span', cls + (value ? '' : ' editable-empty'), value || placeholder)
+  span.title = '点击编辑'
+  span.addEventListener('click', () => {
+    if (span.querySelector('input')) return
+    const input = el('input', 'proj-inline-input')
+    input.value = value
+    span.textContent = ''
+    span.append(input)
+    input.focus()
+    const commit = () => {
+      const v = input.value.trim()
+      span.textContent = v || placeholder
+      span.classList.toggle('editable-empty', !v)
+      if (v !== value) onSave(v)
+    }
+    input.addEventListener('blur', commit)
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') input.blur()
+    })
+  })
+  return span
+}
+
+function updateProject(id, patch) {
+  const projects = loadProjects()
+  const p = projects.find((x) => x.id === id)
+  if (!p) return
+  Object.assign(p, patch, { updatedAt: Date.now() })
+  saveProjects(projects)
+  refreshProjects()
+}
+
+function deleteProject(p) {
+  const projects = loadProjects().filter((x) => x.id !== p.id)
+  saveProjects(projects)
+  logActivity('proj-del', `删除项目：${p.name}`)
+  refreshProjects()
+}
+
+// ===== 筛选区 =====
+function renderStageTabs() {
+  const projects = loadProjects()
+  projStageTabsEl.innerHTML = ''
+  const makeTab = (key, label) => {
+    const btn = el('button', 'proj-tab' + (projFilterStage === key ? ' active' : ''))
+    btn.type = 'button'
+    const count = key === 'all' ? projects.length : projects.filter((p) => p.stage === key).length
+    btn.append(el('span', '', label), el('span', 'proj-tab-count', String(count)))
+    btn.addEventListener('click', () => {
+      projFilterStage = key
+      renderStageTabs()
+      renderProjectList()
+    })
+    projStageTabsEl.append(btn)
+  }
+  makeTab('all', '全部')
+  for (const s of PROJECT_STAGES) makeTab(s.key, s.label)
+}
+
+function renderOwnerFilter() {
+  const owners = [...new Set(loadProjects().map((p) => p.owner).filter(Boolean))]
+  const cur = projOwnerFilterEl.value
+  projOwnerFilterEl.innerHTML = ''
+  const allOpt = el('option', '', '全部负责人')
+  allOpt.value = 'all'
+  projOwnerFilterEl.append(allOpt)
+  for (const o of owners) {
+    const opt = el('option', '', o)
+    opt.value = o
+    projOwnerFilterEl.append(opt)
+  }
+  if ([...projOwnerFilterEl.options].some((o) => o.value === cur)) projOwnerFilterEl.value = cur
+}
+
+function refreshProjects() {
+  renderStageTabs()
+  renderOwnerFilter()
+  renderProjectList()
+}
+
+// ===== 事件绑定与初始化 =====
+projParseBtn.addEventListener('click', parseProjects)
+projSampleBtn.addEventListener('click', () => {
+  projInputEl.value = PROJ_SAMPLE_TEXT
+  projInputEl.focus()
+})
+projImportBtn.addEventListener('click', openImportPanel)
+projImportCloseBtn.addEventListener('click', () => {
+  projImportPanelEl.hidden = true
+})
+projImportConfirmBtn.addEventListener('click', confirmImportTodos)
+projOwnerFilterEl.addEventListener('change', renderProjectList)
+projSearchEl.addEventListener('input', renderProjectList)
+
+refreshProjects()
