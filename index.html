@@ -36,10 +36,96 @@
         <div class="opening-arrow" aria-hidden="true">↓</div>
       </section>
 
-      <!-- 第 2 屏：今日工作台（占位） -->
-      <section id="screen-2" class="screen placeholder-screen">
-        <h2>第 2 屏 · 今日工作台</h2>
-        <p>按时段问候语 + 粘贴排期输入 + 四大统计卡片 + 本月日历 + 最近动态（待开发）</p>
+      <!-- 第 2 屏：今日工作台 -->
+      <section id="screen-2" class="screen">
+        <div class="dash-wrap">
+          <header class="dash-header">
+            <h2 class="dash-greeting" id="dash-greeting"></h2>
+            <p class="dash-greeting-tip" id="dash-greeting-tip"></p>
+          </header>
+
+          <section class="dash-card">
+            <div class="dash-card-head">
+              <h3>粘贴工作排期 / 待办</h3>
+              <button id="dash-sample-btn" class="dash-ghost-btn" type="button">试一试</button>
+            </div>
+            <textarea
+              id="dash-input"
+              class="dash-textarea"
+              placeholder="粘贴你的排期、待办、聊天记录里领到的活……纯文本即可"
+            ></textarea>
+            <div class="dash-parse-actions">
+              <button id="dash-parse-btn" class="btn-primary">解析</button>
+            </div>
+            <div id="dash-parse-status"></div>
+            <div id="dash-confirm-list"></div>
+          </section>
+
+          <section class="dash-stats">
+            <div class="dash-stat-card" id="stat-progress-card">
+              <div class="dash-stat-num" id="stat-progress-num">0</div>
+              <div class="dash-stat-label">进行中</div>
+              <div class="dash-stat-sub" id="stat-progress-sub"></div>
+            </div>
+            <div class="dash-stat-card" id="stat-todo-card">
+              <div class="dash-stat-num" id="stat-todo-num">0</div>
+              <div class="dash-stat-label">待办</div>
+              <div class="dash-stat-sub" id="stat-todo-sub"></div>
+            </div>
+            <div class="dash-stat-card" id="stat-overdue-card">
+              <div class="dash-stat-num" id="stat-overdue-num">0</div>
+              <div class="dash-stat-label">延期风险</div>
+              <div class="dash-stat-sub" id="stat-overdue-sub"></div>
+            </div>
+            <div class="dash-stat-card" id="stat-weekly-card">
+              <div class="dash-ring-wrap">
+                <svg class="dash-ring" viewBox="0 0 64 64" aria-hidden="true">
+                  <circle class="dash-ring-bg" cx="32" cy="32" r="26"></circle>
+                  <circle class="dash-ring-fg" id="dash-ring-fg" cx="32" cy="32" r="26"></circle>
+                </svg>
+                <span class="dash-ring-num" id="dash-ring-num">—</span>
+              </div>
+              <div class="dash-stat-label">本周完成度</div>
+            </div>
+          </section>
+
+          <section class="dash-card">
+            <div class="dash-card-head">
+              <h3>待办清单</h3>
+              <div class="dash-tabs">
+                <button class="dash-tab active" data-filter="all" type="button">全部</button>
+                <button class="dash-tab" data-filter="todo" type="button">未完成</button>
+                <button class="dash-tab" data-filter="done" type="button">已完成</button>
+              </div>
+            </div>
+            <ul id="dash-todo-list" class="dash-todo-list"></ul>
+            <div id="dash-todo-empty" class="dash-empty"></div>
+          </section>
+
+          <section class="dash-card" id="dash-cal-card">
+            <div class="dash-card-head">
+              <h3>本月日历</h3>
+              <div class="dash-cal-nav">
+                <button id="dash-cal-prev" type="button" aria-label="上月">‹</button>
+                <span id="dash-cal-title" class="dash-cal-title"></span>
+                <button id="dash-cal-next" type="button" aria-label="下月">›</button>
+              </div>
+            </div>
+            <div class="dash-cal-weekdays">
+              <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+            </div>
+            <div id="dash-cal-grid" class="dash-cal-grid"></div>
+            <div id="dash-cal-pop" class="dash-cal-pop" hidden></div>
+          </section>
+
+          <section class="dash-card">
+            <div class="dash-card-head">
+              <h3>最近动态</h3>
+            </div>
+            <ul id="dash-act-list" class="dash-act-list"></ul>
+            <div id="dash-act-empty" class="dash-empty">暂无动态</div>
+          </section>
+        </div>
       </section>
 
       <!-- 第 3 屏：岗位拆解（已开发，原样保留） -->
