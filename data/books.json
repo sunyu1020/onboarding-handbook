@@ -2,27 +2,298 @@
   "version": "2.0",
   "description": "书单：精选 20 本，只留上手期真的用得上的。status: want/reading/done。priority: P0=前90天必读 / P1=半年内读 / P2=通勤解闷但有料。",
   "books": [
-    { "id": "b01", "title": "金字塔原理", "author": "芭芭拉·明托", "category": "逻辑表达", "priority": "P0", "reason": "汇报和写文档的底层结构，'结论先行'四个字够你用十年", "forRoles": ["全部"], "status": "want" },
-    { "id": "b02", "title": "非暴力沟通", "author": "马歇尔·卢森堡", "category": "沟通", "priority": "P0", "reason": "和领导/同事起冲突时的第一急救手册", "forRoles": ["全部"], "status": "want" },
-    { "id": "b03", "title": "关键对话", "author": "科里·帕特森 等", "category": "沟通", "priority": "P1", "reason": "高利害、高风险的谈话怎么开口，向上沟通前值得一读", "forRoles": ["全部"], "status": "want" },
-    { "id": "b04", "title": "学会提问", "author": "尼尔·布朗", "category": "思维", "priority": "P1", "reason": "识别需求真伪、判断信息质量的基本功", "forRoles": ["产品经理", "数据分析", "咨询"], "status": "want" },
-    { "id": "b05", "title": "影响力", "author": "罗伯特·西奥迪尼", "category": "心理", "priority": "P1", "reason": "理解人为什么被说服，做运营和谈判的底层知识", "forRoles": ["新媒体运营", "销售", "市场"], "status": "want" },
-    { "id": "b06", "title": "置身事内", "author": "兰小欢", "category": "认知", "priority": "P1", "reason": "快速理解中国商业运转的底层逻辑，和任何行业的人都有话聊", "forRoles": ["全部"], "status": "want" },
-    { "id": "b07", "title": "人人都是产品经理", "author": "苏杰", "category": "岗位入门", "priority": "P2", "reason": "了解PM的日常和黑话，入职前扫盲够用", "forRoles": ["产品经理", "游戏策划", "项目管理"], "status": "want" },
-    { "id": "b08", "title": "数据化管理", "author": "黄成明", "category": "数据", "priority": "P1", "reason": "非技术岗看懂数据、用数据说话的入门书", "forRoles": ["数据分析", "运营", "市场"], "status": "want" },
-    { "id": "b09", "title": "沟通的方法", "author": "脱不花", "category": "沟通", "priority": "P0", "reason": "按场景给话术：怎么破冰、怎么求助、怎么接住批评，新人前三个月的沟通急救箱", "forRoles": ["全部"], "status": "want" },
-    { "id": "b10", "title": "麦肯锡教我的写作武器", "author": "高杉尚孝", "category": "逻辑表达", "priority": "P0", "reason": "写周报、方案、邮件的具体套路，和金字塔原理互补，更落地", "forRoles": ["全部", "咨询"], "status": "want" },
-    { "id": "b11", "title": "你的灯亮着吗", "author": "杰拉尔德·温伯格", "category": "思维", "priority": "P2", "reason": "两小时读完，教你先问'问题到底是什么再动手'，专治新人瞎忙", "forRoles": ["全部", "产品经理"], "status": "want" },
-    { "id": "b12", "title": "小强升职记", "author": "邹鑫", "category": "效率", "priority": "P0", "reason": "碎事多、一人多岗的新人看这本：小说式讲时间管理，GTD 的中文最易读版本", "forRoles": ["全部", "行政", "运营"], "status": "want" },
-    { "id": "b13", "title": "掌控习惯", "author": "詹姆斯·克利尔", "category": "效率", "priority": "P1", "reason": "用系统而不是意志力对付拖延，上手期建好习惯的复利比别人早拿十年", "forRoles": ["全部"], "status": "want" },
-    { "id": "b14", "title": "被讨厌的勇气", "author": "岸见一郎 / 古贺史健", "category": "心态", "priority": "P0", "reason": "'课题分离'是治'领导一句话内耗半天'的特效药，敏感型新人第一本", "forRoles": ["全部"], "status": "want" },
-    { "id": "b15", "title": "蛤蟆先生去看心理医生", "author": "罗伯特·戴博德", "category": "心态", "priority": "P2", "reason": "情绪低落时的自助读物，一个下午能读完，比想象中专业", "forRoles": ["全部"], "status": "want" },
-    { "id": "b16", "title": "向前一步", "author": "谢丽尔·桑德伯格", "category": "女性成长", "priority": "P1", "reason": "职场女性的第一本，核心就一句：往桌前坐，别自己先退出", "forRoles": ["全部"], "status": "want" },
-    { "id": "b17", "title": "远见", "author": "布赖恩·费瑟斯通豪", "category": "职业规划", "priority": "P1", "reason": "把第一份工作放进 45 年职业生涯里看，你会少焦虑很多、也少走弯路", "forRoles": ["全部"], "status": "want" },
-    { "id": "b18", "title": "运营之光", "author": "黄有璨", "category": "岗位入门", "priority": "P1", "reason": "运营岗入职前后各读一遍，第一遍扫盲，第二遍对照自己的活儿", "forRoles": ["新媒体运营", "活动运营", "海外游戏运营", "电商运营"], "status": "want" },
-    { "id": "b19", "title": "谁说菜鸟不会数据分析", "author": "小蚊子团队", "category": "数据", "priority": "P2", "reason": "文科生看懂数据的扶手椅，Excel 就能上手，不用等学 Python", "forRoles": ["数据分析", "运营", "市场", "产品经理"], "status": "want" },
-    { "id": "b20", "title": "杜拉拉升职记", "author": "李可", "category": "职场小说", "priority": "P2", "reason": "通勤路上读完，等于提前看了一季办公室政治的真实剧本，比理论书记得牢", "forRoles": ["全部"], "status": "want" }
+    {
+      "id": "b01",
+      "title": "金字塔原理",
+      "author": "芭芭拉·明托",
+      "category": "逻辑表达",
+      "priority": "P0",
+      "reason": "汇报和写文档的底层结构，'结论先行'四个字够你用十年",
+      "forRoles": [
+        "全部"
+      ],
+      "status": "want",
+      "readingStage": "入职前"
+    },
+    {
+      "id": "b02",
+      "title": "非暴力沟通",
+      "author": "马歇尔·卢森堡",
+      "category": "沟通",
+      "priority": "P0",
+      "reason": "和领导/同事起冲突时的第一急救手册",
+      "forRoles": [
+        "全部"
+      ],
+      "status": "want",
+      "readingStage": "入职前"
+    },
+    {
+      "id": "b03",
+      "title": "关键对话",
+      "author": "科里·帕特森 等",
+      "category": "沟通",
+      "priority": "P1",
+      "reason": "高利害、高风险的谈话怎么开口，向上沟通前值得一读",
+      "forRoles": [
+        "全部"
+      ],
+      "status": "want",
+      "readingStage": "入职1个月"
+    },
+    {
+      "id": "b04",
+      "title": "学会提问",
+      "author": "尼尔·布朗",
+      "category": "思维",
+      "priority": "P1",
+      "reason": "识别需求真伪、判断信息质量的基本功",
+      "forRoles": [
+        "产品经理",
+        "数据分析",
+        "咨询"
+      ],
+      "status": "want",
+      "readingStage": "入职前"
+    },
+    {
+      "id": "b05",
+      "title": "影响力",
+      "author": "罗伯特·西奥迪尼",
+      "category": "心理",
+      "priority": "P1",
+      "reason": "理解人为什么被说服，做运营和谈判的底层知识",
+      "forRoles": [
+        "新媒体运营",
+        "销售",
+        "市场"
+      ],
+      "status": "want",
+      "readingStage": "入职1个月"
+    },
+    {
+      "id": "b06",
+      "title": "置身事内",
+      "author": "兰小欢",
+      "category": "认知",
+      "priority": "P1",
+      "reason": "快速理解中国商业运转的底层逻辑，和任何行业的人都有话聊",
+      "forRoles": [
+        "全部"
+      ],
+      "status": "want",
+      "readingStage": "入职1个月"
+    },
+    {
+      "id": "b07",
+      "title": "人人都是产品经理",
+      "author": "苏杰",
+      "category": "岗位入门",
+      "priority": "P2",
+      "reason": "了解PM的日常和黑话，入职前扫盲够用",
+      "forRoles": [
+        "产品经理",
+        "游戏策划",
+        "项目管理"
+      ],
+      "status": "want",
+      "readingStage": "入职3个月"
+    },
+    {
+      "id": "b08",
+      "title": "数据化管理",
+      "author": "黄成明",
+      "category": "数据",
+      "priority": "P1",
+      "reason": "非技术岗看懂数据、用数据说话的入门书",
+      "forRoles": [
+        "数据分析",
+        "运营",
+        "市场"
+      ],
+      "status": "want",
+      "readingStage": "入职1个月"
+    },
+    {
+      "id": "b09",
+      "title": "沟通的方法",
+      "author": "脱不花",
+      "category": "沟通",
+      "priority": "P0",
+      "reason": "按场景给话术：怎么破冰、怎么求助、怎么接住批评，新人前三个月的沟通急救箱",
+      "forRoles": [
+        "全部"
+      ],
+      "status": "want",
+      "readingStage": "入职前"
+    },
+    {
+      "id": "b10",
+      "title": "麦肯锡教我的写作武器",
+      "author": "高杉尚孝",
+      "category": "逻辑表达",
+      "priority": "P0",
+      "reason": "写周报、方案、邮件的具体套路，和金字塔原理互补，更落地",
+      "forRoles": [
+        "全部",
+        "咨询"
+      ],
+      "status": "want",
+      "readingStage": "入职前"
+    },
+    {
+      "id": "b11",
+      "title": "你的灯亮着吗",
+      "author": "杰拉尔德·温伯格",
+      "category": "思维",
+      "priority": "P2",
+      "reason": "两小时读完，教你先问'问题到底是什么再动手'，专治新人瞎忙",
+      "forRoles": [
+        "全部",
+        "产品经理"
+      ],
+      "status": "want",
+      "readingStage": "入职3个月"
+    },
+    {
+      "id": "b12",
+      "title": "小强升职记",
+      "author": "邹鑫",
+      "category": "效率",
+      "priority": "P0",
+      "reason": "碎事多、一人多岗的新人看这本：小说式讲时间管理，GTD 的中文最易读版本",
+      "forRoles": [
+        "全部",
+        "行政",
+        "运营"
+      ],
+      "status": "want",
+      "readingStage": "入职1个月"
+    },
+    {
+      "id": "b13",
+      "title": "掌控习惯",
+      "author": "詹姆斯·克利尔",
+      "category": "效率",
+      "priority": "P1",
+      "reason": "用系统而不是意志力对付拖延，上手期建好习惯的复利比别人早拿十年",
+      "forRoles": [
+        "全部"
+      ],
+      "status": "want",
+      "readingStage": "入职1个月"
+    },
+    {
+      "id": "b14",
+      "title": "被讨厌的勇气",
+      "author": "岸见一郎 / 古贺史健",
+      "category": "心态",
+      "priority": "P0",
+      "reason": "'课题分离'是治'领导一句话内耗半天'的特效药，敏感型新人第一本",
+      "forRoles": [
+        "全部"
+      ],
+      "status": "want",
+      "readingStage": "入职前"
+    },
+    {
+      "id": "b15",
+      "title": "蛤蟆先生去看心理医生",
+      "author": "罗伯特·戴博德",
+      "category": "心态",
+      "priority": "P2",
+      "reason": "情绪低落时的自助读物，一个下午能读完，比想象中专业",
+      "forRoles": [
+        "全部"
+      ],
+      "status": "want",
+      "readingStage": "入职3个月"
+    },
+    {
+      "id": "b16",
+      "title": "向前一步",
+      "author": "谢丽尔·桑德伯格",
+      "category": "女性成长",
+      "priority": "P1",
+      "reason": "职场女性的第一本，核心就一句：往桌前坐，别自己先退出",
+      "forRoles": [
+        "全部"
+      ],
+      "status": "want",
+      "readingStage": "入职3个月"
+    },
+    {
+      "id": "b17",
+      "title": "远见",
+      "author": "布赖恩·费瑟斯通豪",
+      "category": "职业规划",
+      "priority": "P1",
+      "reason": "把第一份工作放进 45 年职业生涯里看，你会少焦虑很多、也少走弯路",
+      "forRoles": [
+        "全部"
+      ],
+      "status": "want",
+      "readingStage": "入职3个月"
+    },
+    {
+      "id": "b18",
+      "title": "运营之光",
+      "author": "黄有璨",
+      "category": "岗位入门",
+      "priority": "P1",
+      "reason": "运营岗入职前后各读一遍，第一遍扫盲，第二遍对照自己的活儿",
+      "forRoles": [
+        "新媒体运营",
+        "活动运营",
+        "海外游戏运营",
+        "电商运营"
+      ],
+      "status": "want",
+      "readingStage": "入职3个月"
+    },
+    {
+      "id": "b19",
+      "title": "谁说菜鸟不会数据分析",
+      "author": "小蚊子团队",
+      "category": "数据",
+      "priority": "P2",
+      "reason": "文科生看懂数据的扶手椅，Excel 就能上手，不用等学 Python",
+      "forRoles": [
+        "数据分析",
+        "运营",
+        "市场",
+        "产品经理"
+      ],
+      "status": "want",
+      "readingStage": "入职3个月"
+    },
+    {
+      "id": "b20",
+      "title": "杜拉拉升职记",
+      "author": "李可",
+      "category": "职场小说",
+      "priority": "P2",
+      "reason": "通勤路上读完，等于提前看了一季办公室政治的真实剧本，比理论书记得牢",
+      "forRoles": [
+        "全部"
+      ],
+      "status": "want",
+      "readingStage": "入职3个月"
+    }
   ],
-  "categories": ["逻辑表达", "沟通", "思维", "心理", "认知", "效率", "心态", "女性成长", "职业规划", "岗位入门", "数据", "职场小说"],
+  "categories": [
+    "逻辑表达",
+    "沟通",
+    "思维",
+    "心理",
+    "认知",
+    "效率",
+    "心态",
+    "女性成长",
+    "职业规划",
+    "岗位入门",
+    "数据",
+    "职场小说"
+  ],
   "note": "选择标准：每本书必须能回答'新人为什么现在读它'。新增 priority 字段支撑第7屏'按岗位+阶段推荐先看哪本'的排序逻辑。"
 }
