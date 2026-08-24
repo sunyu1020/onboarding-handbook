@@ -3704,3 +3704,453 @@ html[data-theme='green'] .theme-green {
     font-size: 19px;
   }
 }
+
+/* ============================================================
+   第 3 屏 v2：JD 拆解 Agent（jd-* 前缀）
+   ============================================================ */
+/* ---------- 角色选择卡片：先选角色，再执行动作 ---------- */
+.jd-role-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.jd-role-card {
+  position: relative;
+  padding: 18px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.jd-role-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.jd-role-card.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.jd-role-check {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  display: none;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+.jd-role-card.active .jd-role-check {
+  display: flex;
+}
+
+.jd-role-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-right: 28px;
+}
+
+.jd-role-icon {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.jd-role-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.jd-role-tag {
+  padding: 2px 10px;
+  font-size: 12px;
+  color: var(--accent-strong);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.jd-role-name {
+  margin-top: 10px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.jd-role-desc {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+.jd-role-actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.jd-role-actions .btn-primary {
+  padding: 10px 18px;
+  font-size: 14px;
+}
+
+.jd-role-actions .dash-ghost-btn {
+  padding: 10px 16px;
+  font-size: 13.5px;
+}
+
+.jd-role-actions button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.jd-textarea {
+  width: 100%;
+  min-height: 160px;
+  padding: 13px 16px;
+  font-family: inherit;
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  resize: vertical;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.jd-textarea::placeholder {
+  color: var(--text-2);
+  opacity: 0.75;
+}
+
+.jd-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.jd-input-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+}
+
+/* ---------- v2 状态 ---------- */
+.jd-status {
+  margin-top: 14px;
+  padding: 18px;
+  text-align: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.jd-status-error {
+  border-color: var(--danger);
+}
+
+.jd-status-error .jd-status-icon,
+.jd-status-error .jd-status-title {
+  color: var(--danger);
+}
+
+.jd-status-success {
+  border-color: var(--accent);
+}
+
+.jd-status-icon {
+  font-size: 24px;
+}
+
+.jd-status-title {
+  margin-top: 6px;
+  font-size: 16px;
+}
+
+.jd-status-text {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.jd-status .btn-secondary {
+  margin-top: 12px;
+}
+
+.jd-spinner {
+  width: 26px;
+  height: 26px;
+  margin: 0 auto 10px;
+  border: 3px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+/* ---------- v2 结果卡 ---------- */
+.jd-result-wrap {
+  margin-top: 18px;
+  animation: fade-in 0.3s ease;
+}
+
+.jd-result-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.jd-result-name {
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.jd-result-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.jd-chip {
+  display: inline-block;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-radius: 999px;
+}
+
+.jd-chip-ghost {
+  color: var(--text-2);
+  background: var(--surface-2);
+}
+
+.jd-fav-btn {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 20px;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.jd-fav-btn:hover:not(:disabled) {
+  color: #f5a623;
+  border-color: #f5a623;
+}
+
+.jd-fav-btn.faved {
+  color: #f5a623;
+  border-color: #f5a623;
+}
+
+.jd-fav-btn:disabled {
+  cursor: default;
+}
+
+.jd-truth {
+  padding: 20px 24px;
+  margin-bottom: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.jd-truth-label {
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  color: var(--text-2);
+}
+
+.jd-truth-text {
+  margin-top: 8px;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.7;
+}
+
+/* jdDecoded 高亮板块 */
+.jd-decoded {
+  margin-bottom: 16px;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.jd-decoded-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.jd-decoded-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0;
+  font-size: 14px;
+  line-height: 1.7;
+  border-bottom: 1px dashed var(--border);
+}
+
+.jd-decoded-line:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.jd-decoded-jd {
+  color: var(--text-2);
+  text-decoration: line-through;
+}
+
+.jd-decoded-arrow {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.jd-decoded-real {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ---------- 追问对话 ---------- */
+.jd-chat {
+  margin-top: 18px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.jd-chat-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.jd-quick-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  transition: filter 0.15s ease;
+}
+
+.jd-quick-btn:hover {
+  filter: brightness(0.95);
+}
+
+.jd-chat-box {
+  margin-top: 12px;
+  max-height: 340px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px;
+}
+
+.jd-msg {
+  max-width: 84%;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.7;
+  border-radius: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.jd-msg-user {
+  align-self: flex-end;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.jd-msg-ai {
+  align-self: flex-start;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.jd-chat-input-row {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+}
+
+.jd-chat-input-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.jd-chat-input-row input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.jd-chat-input-row input::placeholder {
+  color: var(--text-2);
+  opacity: 0.75;
+}
+
+/* ---------- v2 响应式 ---------- */
+@media (max-width: 768px) {
+  .jd-role-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .jd-result-head {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .jd-truth-text {
+    font-size: 17px;
+  }
+
+  .jd-msg {
+    max-width: 92%;
+  }
+}

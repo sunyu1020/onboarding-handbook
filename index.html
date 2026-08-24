@@ -128,7 +128,7 @@
         </div>
       </section>
 
-      <!-- 第 3 屏：岗位拆解（已开发，原样保留） -->
+      <!-- 第 3 屏：岗位拆解（v1 岗位名拆解 + v2 JD 拆解 Agent） -->
       <section id="screen-3" class="screen">
         <div id="app">
           <header class="hero">
@@ -136,21 +136,95 @@
             <p class="hero-sub">输入岗位名，AI 给你一份真实工作地图</p>
           </header>
 
-          <section class="input-card" id="input-card">
-            <div class="input-row">
-              <input
-                id="job-input"
-                type="text"
-                placeholder="输入你的岗位，如：新媒体运营 / 产品经理 / 审计"
-                autocomplete="off"
-              />
-              <button id="generate-btn" class="btn-primary">拆解这个岗位</button>
+          <!-- 角色选择卡片：先选角色，再执行动作 -->
+          <div class="jd-role-cards" id="jd-role-cards">
+            <div class="jd-role-card active" data-role="name">
+              <span class="jd-role-check">✓</span>
+              <div class="jd-role-head">
+                <span class="jd-role-icon">🧭</span>
+                <div class="jd-role-tags">
+                  <span class="jd-role-tag">经典</span>
+                  <span class="jd-role-tag">快速</span>
+                </div>
+              </div>
+              <h3 class="jd-role-name">岗位名拆解</h3>
+              <p class="jd-role-desc">输入岗位名，生成 8 字段真实工作地图</p>
+              <div class="jd-role-actions">
+                <button id="jd-role-name-btn" class="btn-primary" type="button">输入岗位名，开始拆解</button>
+              </div>
             </div>
-          </section>
+            <div class="jd-role-card" data-role="jd">
+              <span class="jd-role-check">✓</span>
+              <div class="jd-role-head">
+                <span class="jd-role-icon">🔍</span>
+                <div class="jd-role-tags">
+                  <span class="jd-role-tag">全新</span>
+                  <span class="jd-role-tag">截图支持</span>
+                </div>
+              </div>
+              <h3 class="jd-role-name">JD 拆解 Agent</h3>
+              <p class="jd-role-desc">粘贴 JD 或上传截图，把套话翻译成大实话</p>
+              <div class="jd-role-actions">
+                <button id="jd-role-jd-paste-btn" class="btn-primary" type="button">粘贴 JD 原文</button>
+                <button id="jd-role-jd-ocr-btn" class="dash-ghost-btn" type="button">上传 JD 截图</button>
+              </div>
+            </div>
+          </div>
 
-          <section class="status-area" id="status-area"></section>
+          <!-- v1 面板：原样保留 -->
+          <div id="jd-panel-name">
+            <section class="input-card" id="input-card">
+              <div class="input-row">
+                <input
+                  id="job-input"
+                  type="text"
+                  placeholder="输入你的岗位，如：新媒体运营 / 产品经理 / 审计"
+                  autocomplete="off"
+                />
+                <button id="generate-btn" class="btn-primary">拆解这个岗位</button>
+              </div>
+            </section>
 
-          <section class="result-area" id="result-area"></section>
+            <section class="status-area" id="status-area"></section>
+
+            <section class="result-area" id="result-area"></section>
+          </div>
+
+          <!-- v2 面板：JD 拆解 Agent -->
+          <div id="jd-panel-jd" hidden>
+            <section class="input-card jd-input-card">
+              <textarea
+                id="jd-input"
+                class="jd-textarea"
+                placeholder="粘贴一份招聘 JD 原文…"
+              ></textarea>
+              <div class="jd-input-actions">
+                <button id="jd-parse-btn" class="btn-primary">拆解这份 JD</button>
+              </div>
+              <input id="jd-ocr-file" type="file" accept="image/*" hidden />
+            </section>
+
+            <section id="jd-status"></section>
+            <section id="jd-result"></section>
+
+            <section id="jd-chat" class="jd-chat" hidden>
+              <div class="jd-chat-quick">
+                <button class="jd-quick-btn" data-q="这个岗位面试会问什么" type="button">这个岗位面试会问什么</button>
+                <button class="jd-quick-btn" data-q="第一个月最重要的是什么" type="button">第一个月最重要的是什么</button>
+                <button class="jd-quick-btn" data-q="这份 JD 有哪些坑" type="button">这份 JD 有哪些坑</button>
+              </div>
+              <div class="jd-chat-box" id="jd-chat-box"></div>
+              <div class="jd-chat-input-row">
+                <input
+                  id="jd-chat-input"
+                  type="text"
+                  placeholder="继续追问，比如：这个岗位的晋升路径是什么"
+                  autocomplete="off"
+                />
+                <button id="jd-chat-send" class="btn-primary" type="button">发送</button>
+              </div>
+            </section>
+          </div>
 
           <section class="library">
             <h2 class="section-title">岗位库</h2>

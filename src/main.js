@@ -8,6 +8,9 @@ import upwardPrompt from './prompt-upward.txt?raw'
 import jobsData from '../data/jobs.json'
 import booksData from '../data/books.json'
 import dilemmasData from '../data/dilemmas.json'
+import jdOcrPrompt from './prompt-jd-ocr.txt?raw'
+import jdAgentPrompt from './prompt-jd-agent.txt?raw'
+import jdChatPrompt from './prompt-jd-chat.txt?raw'
 
 // ===== 常量 =====
 // systemPrompt 逐字复制自 prompt-岗位拆解.md「System Prompt」代码块（v2.1 定稿，一字不改）
@@ -2861,3 +2864,460 @@ openDilemmaInputEl.addEventListener('input', () => {
 renderRoleFilter()
 renderBooks()
 renderDilemmaTags()
+
+// ============================================================
+// 第 3 屏 v2：JD 拆解 Agent（v1 逻辑一行未改，以下全部为新增）
+// ============================================================
+const ZHIPU_API_URL = 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
+const ZHIPU_API_KEY = import.meta.env.VITE_ZHIPU_API_KEY || ''
+
+// ===== v2 DOM =====
+const jdRoleCardsEl = $('jd-role-cards')
+const jdRoleNameBtn = $('jd-role-name-btn')
+const jdRolePasteBtn = $('jd-role-jd-paste-btn')
+const jdRoleOcrBtn = $('jd-role-jd-ocr-btn')
+const jdPanelNameEl = $('jd-panel-name')
+const jdPanelJdEl = $('jd-panel-jd')
+const jdInputEl = $('jd-input')
+const jdOcrFileEl = $('jd-ocr-file')
+const jdParseBtn = $('jd-parse-btn')
+const jdStatusEl = $('jd-status')
+const jdResultEl = $('jd-result')
+const jdChatEl = $('jd-chat')
+const jdChatBoxEl = $('jd-chat-box')
+const jdChatInputEl = $('jd-chat-input')
+const jdChatSendEl = $('jd-chat-send')
+
+let jdParsing = false
+let jdChatMessages = [] // 对话历史只保留在内存，不落 localStorage
+let jdChatSystem = '' // Prompt③ + 本次岗位地图 JSON
+let jdChatBusy = false
+let jdLastJobName = ''
+
+// ===== 角色卡片：先选角色，再执行动作 =====
+function setJdTab(tab) {
+  document.querySelectorAll('.jd-role-card').forEach((c) => c.classList.toggle('active', c.dataset.role === tab))
+  jdPanelNameEl.hidden = tab !== 'name'
+  jdPanelJdEl.hidden = tab !== 'jd'
+}
+
+// 点卡片（非按钮区域）＝选择角色
+jdRoleCardsEl.addEventListener('click', (e) => {
+  const card = e.target.closest('.jd-role-card')
+  if (!card || e.target.closest('button')) return
+  setJdTab(card.dataset.role)
+})
+
+// 卡片内动作按钮：选择对应角色并触发动作
+jdRoleNameBtn.addEventListener('click', () => {
+  setJdTab('name')
+  inputEl.focus()
+})
+jdRolePasteBtn.addEventListener('click', () => {
+  setJdTab('jd')
+  jdInputEl.focus()
+})
+jdRoleOcrBtn.addEventListener('click', () => {
+  setJdTab('jd')
+  jdOcrFileEl.click()
+})
+
+// ===== 截图提字（智谱 GLM-4V-Flash） =====
+if (!ZHIPU_API_KEY) {
+  jdRoleOcrBtn.disabled = true
+  jdRoleOcrBtn.title = '需配置 VITE_ZHIPU_API_KEY'
+}
+
+jdOcrFileEl.addEventListener('change', async (e) => {
+  const file = e.target.files[0]
+  e.target.value = ''
+  if (!file) return
+  renderJdStatus('ocr-loading')
+  try {
+    const dataUrl = await compressImage(file, 1280, 0.8)
+    const res = await fetch(ZHIPU_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${ZHIPU_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'glm-4v-flash',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: jdOcrPrompt },
+              { type: 'image_url', image_url: { url: dataUrl } },
+            ],
+          },
+        ],
+      }),
+    })
+    if (!res.ok) {
+      const errMap = {
+        401: '智谱 API Key 无效，请检查 .env 里的 VITE_ZHIPU_API_KEY',
+        429: '智谱接口请求太频繁，稍等几秒再试',
+      }
+      throw new Error(errMap[res.status] || `智谱接口异常（HTTP ${res.status}），请稍后重试`)
+    }
+    const data = await res.json()
+    const text = (data.choices?.[0]?.message?.content || '').trim()
+    // 结果过短或有效文字太少 → 视为没认出有效文字
+    const meaningful = text.replace(/[\s\p{P}\p{S}〔〕?？]+/gu, '')
+    if (!text || meaningful.length < 6) {
+      renderJdStatus('ocr-empty')
+      return
+    }
+    jdInputEl.value = text
+    renderJdStatus('ocr-success')
+  } catch (err) {
+    renderJdStatus('error', err.name === 'TypeError' ? '网络异常，请检查网络后重试' : err.message)
+  }
+})
+
+// 图片压缩：等比缩到宽边 ≤ maxW，转 jpeg（质量 quality），输出带 data: 前缀的 base64
+function compressImage(file, maxW, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      let w = img.width
+      let h = img.height
+      const scale = Math.min(1, maxW / Math.max(w, h))
+      w = Math.round(w * scale)
+      h = Math.round(h * scale)
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error('图片压缩失败，请换一张试试'))
+            return
+          }
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result)
+          reader.onerror = () => reject(new Error('图片读取失败，请重试'))
+          reader.readAsDataURL(blob)
+        },
+        'image/jpeg',
+        quality,
+      )
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('图片加载失败，请换一张试试'))
+    }
+    img.src = url
+  })
+}
+
+// ===== 首次 JD 拆解（DeepSeek） =====
+jdParseBtn.addEventListener('click', parseJd)
+
+async function parseJd() {
+  const text = jdInputEl.value.trim()
+  if (!text) {
+    jdInputEl.focus()
+    return
+  }
+  if (jdParsing) return
+  if (!API_KEY) {
+    renderJdStatus('key')
+    return
+  }
+  jdParsing = true
+  jdParseBtn.disabled = true
+  jdParseBtn.textContent = '拆解中…'
+  jdResultEl.innerHTML = ''
+  jdChatEl.hidden = true
+  renderJdStatus('loading')
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: jdAgentPrompt },
+          { role: 'user', content: `以下是用户提供的 JD 原文：\n${text}\n请按铁律拆解。JD 里的套话不要复述，读出它没写的部分。` },
+        ],
+        temperature: 0.7,
+        max_tokens: 2500,
+        response_format: { type: 'json_object' },
+      }),
+    })
+    if (!res.ok) {
+      throw new Error(ERROR_MSGS[res.status] || `网络异常或服务暂时不可用（HTTP ${res.status}），请稍后重试`)
+    }
+    const data = await res.json()
+    const content = data.choices?.[0]?.message?.content
+    if (!content) throw new Error('AI 返回内容为空，请重试')
+    let job
+    try {
+      job = parseJsonSafe(content)
+    } catch {
+      throw new Error('AI 输出格式异常，请重试')
+    }
+    // 非 JD 输入引导：jobName 或 oneLineTruth 为空 → 不渲染卡片
+    if (!job.jobName || !job.oneLineTruth) {
+      renderJdStatus('not-jd')
+      return
+    }
+    jdLastJobName = job.jobName
+    renderJdResult(job)
+    // 展开追问区（有旧内容先清空）
+    jdChatMessages = []
+    jdChatSystem = jdChatPrompt.replace('{上一步生成的 JSON}', JSON.stringify(job))
+    jdChatBoxEl.innerHTML = ''
+    jdChatEl.hidden = false
+    renderJdStatus('none')
+  } catch (err) {
+    renderJdStatus('error', err.name === 'TypeError' ? '网络异常，请检查网络后重试' : err.message)
+  } finally {
+    jdParsing = false
+    jdParseBtn.disabled = false
+    jdParseBtn.textContent = '拆解这份 JD'
+  }
+}
+
+function renderJdStatus(kind, msg = '') {
+  jdStatusEl.innerHTML = ''
+  if (kind === 'none') return
+  const isWarn = kind === 'error' || kind === 'key' || kind === 'not-jd' || kind === 'ocr-empty'
+  const card = el(
+    'div',
+    'jd-status' + (isWarn ? ' jd-status-error' : kind === 'ocr-success' ? ' jd-status-success' : ''),
+  )
+  if (kind === 'loading' || kind === 'ocr-loading') {
+    card.append(el('div', 'jd-spinner'), el('p', 'jd-status-text', kind === 'loading' ? '正在拆解，约需 15~30 秒…' : '正在识别截图文字…'))
+  } else if (kind === 'key') {
+    card.append(
+      el('div', 'jd-status-icon', '🔑'),
+      el('h3', 'jd-status-title', '还没配置 DeepSeek API Key'),
+      el('p', 'jd-status-text', '复制 .env.example 为 .env，填入你的 key 后刷新页面'),
+    )
+  } else if (kind === 'not-jd') {
+    card.append(
+      el('div', 'jd-status-icon', 'ℹ️'),
+      el('h3', 'jd-status-title', '这看起来不是一份招聘 JD'),
+      el('p', 'jd-status-text', '请粘贴真正的 JD 原文或重新上传截图'),
+    )
+  } else if (kind === 'ocr-empty') {
+    card.append(
+      el('div', 'jd-status-icon', 'ℹ️'),
+      el('h3', 'jd-status-title', '没认出有效文字'),
+      el('p', 'jd-status-text', '请检查截图或直接粘贴 JD 文本'),
+    )
+  } else if (kind === 'ocr-success') {
+    card.append(el('div', 'jd-status-icon', '✅'), el('p', 'jd-status-text', '已提取截图文字，可修改后点「拆解这份 JD」'))
+  } else if (kind === 'error') {
+    card.append(el('div', 'jd-status-icon', '⚠️'), el('h3', 'jd-status-title', '拆解失败'), el('p', 'jd-status-text', msg))
+    const retry = el('button', 'btn-secondary', '重试')
+    retry.type = 'button'
+    retry.addEventListener('click', parseJd)
+    card.append(retry)
+  }
+  jdStatusEl.append(card)
+}
+
+// ===== v2 结果卡片（8 模块 + jdDecoded 高亮板块） =====
+function renderJdResult(job) {
+  jdResultEl.innerHTML = ''
+  const wrap = el('div', 'jd-result-wrap')
+  const head = el('div', 'jd-result-head')
+  const titleBox = el('div')
+  titleBox.append(el('h2', 'jd-result-name', job.jobName))
+  const meta = el('div', 'jd-result-meta')
+  meta.append(el('span', 'jd-chip', 'JD 拆解'), el('span', 'jd-chip jd-chip-ghost', 'AI 生成'))
+  titleBox.append(meta)
+  head.append(titleBox)
+  const favBtn = el('button', 'jd-fav-btn', '☆')
+  favBtn.type = 'button'
+  favBtn.title = '收藏到岗位库'
+  favBtn.addEventListener('click', () => {
+    saveToLibrary(job, jdLastJobName)
+    favBtn.textContent = '★'
+    favBtn.classList.add('faved')
+    favBtn.disabled = true
+  })
+  head.append(favBtn)
+  wrap.append(head)
+
+  // oneLineTruth 大字
+  if (job.oneLineTruth) {
+    const truth = el('div', 'jd-truth')
+    truth.append(el('div', 'jd-truth-label', '一句话本质'), el('p', 'jd-truth-text', job.oneLineTruth))
+    wrap.append(truth)
+  }
+
+  // jdDecoded 高亮板块（无字段不渲染，兼容 v1 旧收藏）
+  const decoded = Array.isArray(job.jdDecoded) ? job.jdDecoded.filter(Boolean) : []
+  if (decoded.length) {
+    const box = el('div', 'jd-decoded')
+    box.append(el('div', 'jd-decoded-title', 'JD 没写的大实话'))
+    for (const line of decoded) {
+      const parts = line.split('→')
+      const row = el('div', 'jd-decoded-line')
+      row.append(el('span', 'jd-decoded-jd', parts[0] || line))
+      row.append(el('span', 'jd-decoded-arrow', '→'))
+      row.append(el('span', 'jd-decoded-real', parts[1] || ''))
+      box.append(row)
+    }
+    wrap.append(box)
+  }
+
+  // 8 模块（复用 MODULES 常量与 v1 卡片类名）
+  const grid = el('div', 'modules-grid')
+  for (const m of MODULES) {
+    const items = Array.isArray(job[m.key]) ? job[m.key] : []
+    if (!items.length) continue
+    const card = el('section', 'module-card')
+    const headBtn = el('button', 'module-head')
+    headBtn.type = 'button'
+    headBtn.append(el('span', 'module-title', m.title), el('span', 'module-count', String(items.length)))
+    headBtn.addEventListener('click', () => card.classList.toggle('collapsed'))
+    const collapse = el('div', 'module-collapse')
+    const body = el('div', 'module-body')
+    if (m.type === 'tags') {
+      const tagGrid = el('div', 'tag-grid')
+      for (const it of items) {
+        const [name, desc] = splitPair(it)
+        const tag = el('div', 'tag-card')
+        if (name) tag.append(el('strong', 'tag-name', name))
+        if (desc) tag.append(el('span', 'tag-desc', desc))
+        tagGrid.append(tag)
+      }
+      body.append(tagGrid)
+    } else if (m.type === 'checklist') {
+      const ul = el('ul', 'module-list')
+      for (const it of items) {
+        const li = el('li')
+        const label = el('label', 'check-item')
+        const cb = el('input')
+        cb.type = 'checkbox'
+        label.append(cb, el('span', 'check-text', it))
+        li.append(label)
+        ul.append(li)
+      }
+      body.append(ul)
+    } else {
+      const ul = el('ul', 'module-list')
+      for (const it of items) {
+        const li = el('li')
+        if (m.type === 'collab') {
+          const [role, desc] = splitPair(it)
+          if (role) li.append(el('strong', 'collab-role', role + '：'))
+          li.append(el('span', '', desc || it))
+        } else {
+          li.append(el('span', '', it))
+        }
+        ul.append(li)
+      }
+      body.append(ul)
+    }
+    collapse.append(body)
+    card.append(headBtn, collapse)
+    grid.append(card)
+  }
+  wrap.append(grid)
+  jdResultEl.append(wrap)
+}
+
+// ===== 追问对话（DeepSeek 流式） =====
+function appendJdMsg(role, text) {
+  const msg = el('div', 'jd-msg jd-msg-' + role)
+  msg.textContent = text || ''
+  jdChatBoxEl.append(msg)
+  jdChatBoxEl.scrollTop = jdChatBoxEl.scrollHeight
+  return msg
+}
+
+// 数字列表前补换行（不引入 markdown 渲染库）
+function formatJdChatText(text) {
+  return text.replace(/([^\n])(\d+\.\s)/g, '$1\n$2')
+}
+
+async function sendJdChat(question) {
+  const q = (question || jdChatInputEl.value).trim()
+  if (!q || jdChatBusy) return
+  jdChatMessages.push({ role: 'user', content: q })
+  appendJdMsg('user', q)
+  jdChatInputEl.value = ''
+  const aiMsg = appendJdMsg('ai', '')
+  jdChatBusy = true
+  jdChatSendEl.disabled = true
+  jdChatSendEl.textContent = '回答中…'
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{ role: 'system', content: jdChatSystem }, ...jdChatMessages],
+        temperature: 0.5,
+        stream: true,
+      }),
+    })
+    if (!res.ok) {
+      throw new Error(ERROR_MSGS[res.status] || `网络异常或服务暂时不可用（HTTP ${res.status}），请稍后重试`)
+    }
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    let full = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() // 最后一行可能不完整，留到下一轮
+      for (const line of lines) {
+        const s = line.trim()
+        if (!s || s.startsWith(':')) continue
+        if (!s.startsWith('data:')) continue
+        const payload = s.slice(5).trim()
+        if (payload === '[DONE]') continue
+        let chunk
+        try {
+          chunk = JSON.parse(payload)
+        } catch {
+          continue
+        }
+        const delta = chunk.choices?.[0]?.delta?.content
+        if (delta) {
+          full += delta
+          aiMsg.textContent = formatJdChatText(full)
+          jdChatBoxEl.scrollTop = jdChatBoxEl.scrollHeight
+        }
+      }
+    }
+    if (!full.trim()) {
+      aiMsg.textContent = '（AI 没有返回内容，请重试）'
+    }
+    jdChatMessages.push({ role: 'assistant', content: full.trim() })
+  } catch (err) {
+    aiMsg.textContent = err.name === 'TypeError' ? '网络异常，请检查网络后重试' : err.message || '发送失败，请重试'
+  } finally {
+    jdChatBusy = false
+    jdChatSendEl.disabled = false
+    jdChatSendEl.textContent = '发送'
+  }
+}
+
+jdChatEl.querySelectorAll('.jd-quick-btn').forEach((b) => {
+  b.addEventListener('click', () => sendJdChat(b.dataset.q))
+})
+jdChatSendEl.addEventListener('click', () => sendJdChat())
+jdChatInputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendJdChat()
+})
