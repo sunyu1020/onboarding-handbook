@@ -111,10 +111,10 @@
 ## 七、当前阶段备忘
 
 - [x] 阶段 0：环境搭建与 Claude Code 连通 —— 已完成
-- [ ] 阶段 1：项目初始化 + 本文档完善（git 仓库已建，待 `npm create vite` 起项目）
+- [x] 阶段 1：项目初始化 + 本文档完善 —— 已完成（git 仓库 + Vite 项目已建）
 - [x] 阶段 2：内容资产 —— 已完成（岗位库 29 个含 keyCompetencies / 困境库 16 条三套解法 / 书单 20 本含 priority / 岗位拆解 Prompt v2.1 / JD 拆解 Agent Prompt / 会议纪要 Prompt）
-- [ ] 阶段 3：逐屏开发（顺序：第 1 屏 → 第 3 屏岗位拆解 → 第 2 屏 → 第 4-6 屏 → 第 7 屏 → 第 8 屏）
-- [ ] 阶段 4：AI 服务接入（DeepSeek：岗位拆解/JD 拆解/纪要/周报；GLM-4V-Flash：JD 截图提字；DashScope：录音转写）
+- [x] 阶段 3：逐屏开发 —— 已完成（8 屏全部开发完毕，提交 6bb722d）
+- [ ] 阶段 4：AI 服务接入（DeepSeek 岗位拆解/纪要/周报 ✅、DashScope 录音转写 ✅；待补：JD 拆解 Agent + GLM-4V-Flash 截图提字，即第 3 屏 v2）
 - [ ] 阶段 5：动效打磨 + 移动端适配 + 作品集叙事页 + 正式发布（GitHub Pages）
 
 > 遗留项（人工任务，AI 不可代劳）：
