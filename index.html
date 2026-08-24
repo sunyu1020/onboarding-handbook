@@ -263,10 +263,84 @@
         </div>
       </section>
 
-      <!-- 第 6 屏：周报与向上汇报（占位） -->
-      <section id="screen-6" class="screen placeholder-screen">
-        <h2>第 6 屏 · 周报与向上汇报</h2>
-        <p>自动汇总台账与纪要，生成三段式周报和向上汇报版本（待开发）</p>
+      <!-- 第 6 屏：周报与向上汇报 -->
+      <section id="screen-6" class="screen">
+        <div class="rep-wrap">
+          <header class="rep-header">
+            <h2 class="rep-title">周报与向上汇报</h2>
+            <p class="rep-sub">自动汇总本周数据，AI 组织成文，数字说话</p>
+          </header>
+
+          <div class="rep-tabs" id="rep-tabs">
+            <button class="rep-tab active" data-tab="weekly" type="button">生成本周周报</button>
+            <button class="rep-tab" data-tab="upward" type="button">生成向上汇报</button>
+          </div>
+
+          <section class="rep-panel" id="rep-panel-weekly">
+            <div class="rep-stats">
+              <div class="rep-stat">
+                <div class="rep-ring-wrap">
+                  <svg class="rep-ring" viewBox="0 0 64 64" aria-hidden="true">
+                    <circle class="rep-ring-bg" cx="32" cy="32" r="26"></circle>
+                    <circle class="rep-ring-fg" id="rep-ring-fg" cx="32" cy="32" r="26"></circle>
+                  </svg>
+                  <span class="rep-ring-num" id="rep-ring-num">—</span>
+                </div>
+                <span class="rep-stat-label">本周完成度</span>
+              </div>
+              <div class="rep-stat">
+                <div class="rep-stat-num" id="rep-stat-done">0</div>
+                <span class="rep-stat-label">完成</span>
+              </div>
+              <div class="rep-stat">
+                <div class="rep-stat-num" id="rep-stat-overdue">0</div>
+                <span class="rep-stat-label">延期</span>
+              </div>
+              <div class="rep-stat">
+                <div class="rep-stat-num" id="rep-stat-risks">0</div>
+                <span class="rep-stat-label">风险</span>
+              </div>
+            </div>
+            <div id="rep-empty-hint" class="rep-empty-hint" hidden>
+              本周还没有数据，去第 2/4/5 屏填一点
+              <button id="rep-goto-workbench" class="dash-ghost-btn" type="button">跳转工作台</button>
+            </div>
+            <div class="rep-actions">
+              <button id="rep-generate-btn" class="btn-primary">生成本周周报</button>
+            </div>
+            <div id="rep-status"></div>
+            <textarea
+              id="rep-editor"
+              class="rep-editor"
+              placeholder="周报生成后在这里，可直接编辑"
+            ></textarea>
+            <div class="rep-editor-actions">
+              <span id="rep-editor-meta" class="rep-editor-meta"></span>
+              <button id="rep-copy-btn" class="dash-ghost-btn" type="button" hidden>复制</button>
+            </div>
+            <div class="rep-history">
+              <h3>历史周报</h3>
+              <ul id="rep-history-list" class="rep-history-list"></ul>
+              <div id="rep-history-empty" class="rep-empty">暂无历史周报</div>
+            </div>
+          </section>
+
+          <section class="rep-panel" id="rep-panel-upward" hidden>
+            <p class="rep-upward-hint">基于「生成本周周报」标签里的当前内容改写为适合发给领导的版本。</p>
+            <div class="rep-actions">
+              <button id="rep-upward-btn" class="btn-primary">生成向上汇报</button>
+            </div>
+            <div id="rep-upward-status"></div>
+            <textarea
+              id="rep-upward-editor"
+              class="rep-editor"
+              placeholder="向上汇报生成后在这里，可直接编辑"
+            ></textarea>
+            <div class="rep-editor-actions">
+              <button id="rep-upward-copy" class="dash-ghost-btn" type="button" hidden>复制</button>
+            </div>
+          </section>
+        </div>
       </section>
 
       <!-- 第 7 屏：新人开挂室（占位） -->

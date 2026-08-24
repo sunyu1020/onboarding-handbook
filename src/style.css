@@ -2734,3 +2734,327 @@ html[data-theme='green'] .theme-green {
     gap: 6px;
   }
 }
+
+/* ============================================================
+   第 6 屏：周报与向上汇报（rep-* 前缀）
+   ============================================================ */
+.rep-wrap {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+}
+
+.rep-header {
+  margin-bottom: 20px;
+}
+
+.rep-title {
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.rep-sub {
+  margin-top: 8px;
+  font-size: 15px;
+  color: var(--text-2);
+}
+
+.rep-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  margin-bottom: 16px;
+}
+
+.rep-tab {
+  padding: 7px 18px;
+  font-size: 14px;
+  color: var(--text-2);
+  background: none;
+  border: none;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.rep-tab.active {
+  color: var(--accent-strong);
+  background: var(--surface);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.rep-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------- 统计条 ---------- */
+.rep-stats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.rep-stat {
+  flex: 1 1 0;
+  min-width: 130px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--surface-2);
+  border-radius: 12px;
+}
+
+.rep-stat-num {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.rep-stat-label {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.rep-ring-wrap {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+}
+
+.rep-ring {
+  width: 56px;
+  height: 56px;
+  transform: rotate(-90deg);
+}
+
+.rep-ring-bg {
+  fill: none;
+  stroke: var(--surface);
+  stroke-width: 7;
+}
+
+.rep-ring-fg {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 7;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.4s ease;
+}
+
+.rep-ring-num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* ---------- 空数据提示 ---------- */
+.rep-empty-hint {
+  margin-top: 14px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+}
+
+/* ---------- 操作与状态 ---------- */
+.rep-actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+}
+
+.rep-status {
+  margin-top: 14px;
+  padding: 18px;
+  text-align: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.rep-status-error {
+  border-color: var(--danger);
+}
+
+.rep-status-error .rep-status-icon,
+.rep-status-error .rep-status-title {
+  color: var(--danger);
+}
+
+.rep-status-success {
+  border-color: var(--accent);
+}
+
+.rep-status-icon {
+  font-size: 24px;
+}
+
+.rep-status-title {
+  margin-top: 6px;
+  font-size: 16px;
+}
+
+.rep-status-text {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.rep-status .btn-secondary {
+  margin-top: 12px;
+}
+
+.rep-spinner {
+  width: 26px;
+  height: 26px;
+  margin: 0 auto 10px;
+  border: 3px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+/* ---------- 编辑器 ---------- */
+.rep-editor {
+  width: 100%;
+  min-height: 220px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  font-family: inherit;
+  font-size: 14.5px;
+  line-height: 1.8;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  resize: vertical;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rep-editor::placeholder {
+  color: var(--text-2);
+  opacity: 0.75;
+}
+
+.rep-editor:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.rep-editor-actions {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rep-editor-meta {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+/* ---------- 历史 ---------- */
+.rep-history {
+  margin-top: 22px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.rep-history h3 {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.rep-history-list {
+  list-style: none;
+}
+
+.rep-history-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 4px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.rep-history-row:hover {
+  color: var(--accent-strong);
+}
+
+.rep-history-week {
+  font-weight: 600;
+}
+
+.rep-history-flags {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.rep-empty {
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.rep-upward-hint {
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+/* ---------- 第 6 屏响应式 ---------- */
+@media (max-width: 768px) {
+  .rep-wrap {
+    padding: 24px 14px 56px;
+  }
+
+  .rep-title {
+    font-size: 22px;
+  }
+
+  .rep-stats {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .rep-stat {
+    flex: 0 0 auto;
+    min-width: 120px;
+  }
+
+  .rep-tabs {
+    display: flex;
+    overflow-x: auto;
+  }
+}

@@ -3,6 +3,8 @@ import systemPrompt from './prompt.txt?raw'
 import todoParsePromptRaw from './prompt-todo-parse.txt?raw'
 import projectParsePromptRaw from './prompt-project-parse.txt?raw'
 import meetingPrompt from './prompt-meeting.txt?raw'
+import weeklyPrompt from './prompt-weekly.txt?raw'
+import upwardPrompt from './prompt-upward.txt?raw'
 import jobsData from '../data/jobs.json'
 
 // ===== 常量 =====
@@ -482,6 +484,7 @@ document.querySelectorAll('.screen[id]').forEach((s) => navHighlighter.observe(s
 // odb_activities     动态：{type,title,time}（最多保留 50 条）
 // odb_projects       项目台账：{id,name,stage,deadline,owner,risks,todoIds,createdAt,updatedAt}
 // odb_meetings       会议纪要：{id,title,date,conclusions,actionItems,openQuestions,createdAt}（保留最近 20 条）
+// odb_reports        周报：{id,weekStart,weekly,upward,createdAt}（保留最近 8 条）
 
 // ===== 第 2 屏 DOM =====
 const dashGreetingEl = $('dash-greeting')
@@ -2154,3 +2157,409 @@ function dashscopeTranscribe(pcmBuffer, onTick) {
 // ===== 事件绑定与初始化 =====
 meetExtractBtnEl.addEventListener('click', extractMeeting)
 renderMeetHistory()
+
+// ============================================================
+// 第 6 屏：周报与向上汇报
+// ============================================================
+const REPORTS_KEY = 'odb_reports'
+
+// ===== 第 6 屏 DOM =====
+const repTabsEl = $('rep-tabs')
+const repPanelWeeklyEl = $('rep-panel-weekly')
+const repPanelUpwardEl = $('rep-panel-upward')
+const repEmptyHintEl = $('rep-empty-hint')
+const repGenerateBtn = $('rep-generate-btn')
+const repStatusEl = $('rep-status')
+const repEditorEl = $('rep-editor')
+const repEditorMetaEl = $('rep-editor-meta')
+const repCopyBtn = $('rep-copy-btn')
+const repHistoryListEl = $('rep-history-list')
+const repHistoryEmptyEl = $('rep-history-empty')
+const repUpwardBtn = $('rep-upward-btn')
+const repUpwardStatusEl = $('rep-upward-status')
+const repUpwardEditorEl = $('rep-upward-editor')
+const repUpwardCopyBtn = $('rep-upward-copy')
+
+let repGenerating = false
+let repUpwardGenerating = false
+let repOverwriteArmed = false
+
+ACT_ICONS['report-weekly'] = '📊'
+ACT_ICONS['report-upward'] = '📤'
+
+function loadReports() {
+  try {
+    return JSON.parse(localStorage.getItem(REPORTS_KEY)) || []
+  } catch {
+    return []
+  }
+}
+
+function saveReports(list) {
+  // 按 weekStart 倒序保留 8 条
+  const sorted = [...list].sort((a, b) => (a.weekStart < b.weekStart ? 1 : -1)).slice(0, 8)
+  localStorage.setItem(REPORTS_KEY, JSON.stringify(sorted))
+}
+
+// ===== 本周数据快照（前端计算，AI 只负责组织成文，禁止编造） =====
+function buildWeeklySnapshot() {
+  const todos = loadTodos()
+  const projects = loadProjects()
+  const meetings = loadMeetings()
+  const monday = mondayStart()
+  const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const weekStartStr = fmt(monday)
+  const weekStartMs = monday.getTime()
+  const weekEndMs = weekStartMs + 7 * 86400000
+  const nextMondayStr = fmt(new Date(weekStartMs + 7 * 86400000))
+  const nextSundayStr = fmt(new Date(weekStartMs + 13 * 86400000))
+  const today = todayStr()
+
+  // 本周完成度（算法与第 2 屏环形一致：分母=本周一以来创建的待办）
+  const weekCreated = todos.filter((t) => t.createdAt >= weekStartMs)
+  const weekDone = weekCreated.filter((t) => t.done)
+  const completion = weekCreated.length ? Math.round((weekDone.length / weekCreated.length) * 100) : 0
+
+  // 已完成：doneAt 在本周，附关联项目名
+  const completed = todos
+    .filter((t) => t.done && t.doneAt && t.doneAt >= weekStartMs)
+    .map((t) => {
+      const proj = projects.find((p) => (p.todoIds || []).includes(t.id))
+      return { title: t.title, doneAt: t.doneAt, project: proj ? proj.name : undefined }
+    })
+
+  // 延期：未完成且 dueDate < 今天（days 用 Date 差值，跨月安全）
+  const overdue = todos
+    .filter((t) => !t.done && t.dueDate && t.dueDate < today)
+    .map((t) => ({ title: t.title, dueDate: t.dueDate, days: daysBetween(t.dueDate, today) }))
+
+  // 风险：risks 非空的项目
+  const risks = projects
+    .filter((p) => p.risks && p.risks.length)
+    .map((p) => ({ project: p.name, risks: p.risks }))
+
+  // 下周计划：未完成且 dueDate 在下周一~下周日
+  const nextWeek = todos
+    .filter((t) => !t.done && t.dueDate && t.dueDate >= nextMondayStr && t.dueDate <= nextSundayStr)
+    .map((t) => ({ title: t.title, dueDate: t.dueDate, priority: t.priority }))
+
+  // 本周创建的纪要
+  const meetingsThisWeek = meetings
+    .filter((m) => m.createdAt >= weekStartMs && m.createdAt < weekEndMs)
+    .map((m) => ({
+      title: m.title,
+      date: m.date,
+      actionItems: (m.actionItems || []).map((a) => ({ task: a.task, owner: a.owner, deadline: a.deadline })),
+    }))
+
+  // 本周更新过的项目
+  const projectsThisWeek = projects
+    .filter((p) => p.updatedAt >= weekStartMs && p.updatedAt < weekEndMs)
+    .map((p) => ({
+      name: p.name,
+      stage: (PROJECT_STAGES.find((s) => s.key === p.stage) || {}).label || p.stage,
+      deadline: p.deadline,
+    }))
+
+  return {
+    weekStart: weekStartStr,
+    today,
+    completion,
+    completed,
+    overdue,
+    risks,
+    nextWeek,
+    meetings: meetingsThisWeek,
+    projects: projectsThisWeek,
+  }
+}
+
+// ===== 标签切换 =====
+function setRepTab(tab) {
+  document.querySelectorAll('.rep-tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab))
+  repPanelWeeklyEl.hidden = tab !== 'weekly'
+  repPanelUpwardEl.hidden = tab !== 'upward'
+  if (tab === 'weekly') refreshRepStats()
+}
+
+repTabsEl.addEventListener('click', (e) => {
+  const b = e.target.closest('.rep-tab')
+  if (b) setRepTab(b.dataset.tab)
+})
+
+// ===== 统计条 =====
+function refreshRepStats() {
+  const snap = buildWeeklySnapshot()
+  const hasData = loadTodos().length + loadProjects().length + loadMeetings().length > 0
+  const C = 2 * Math.PI * 26
+  $('rep-ring-num').textContent = hasData ? `${snap.completion}%` : '—'
+  $('rep-ring-fg').setAttribute('stroke-dasharray', `${((snap.completion / 100) * C).toFixed(1)} ${C.toFixed(1)}`)
+  $('rep-stat-done').textContent = String(snap.completed.length)
+  $('rep-stat-overdue').textContent = String(snap.overdue.length)
+  $('rep-stat-risks').textContent = String(snap.risks.length)
+  repEmptyHintEl.hidden = hasData
+  repEditorMetaEl.textContent = `本周 ${snap.weekStart} ~ ${snap.today}`
+}
+
+function updateRepGenerateBtn() {
+  const snap = buildWeeklySnapshot()
+  const existing = loadReports().find((r) => r.weekStart === snap.weekStart)
+  repOverwriteArmed = false
+  repGenerateBtn.textContent = existing ? '重新生成' : '生成本周周报'
+}
+
+// 去掉 Markdown 代码围栏（纯文本输出的兜底清洗）
+function stripCodeFence(text) {
+  return text.replace(/^```[a-zA-Z]*\s*\n?/, '').replace(/\n?```\s*$/, '')
+}
+
+// ===== 生成周报（纯文本输出，不用 json_object） =====
+repGenerateBtn.addEventListener('click', () => {
+  const snap = buildWeeklySnapshot()
+  const existing = loadReports().find((r) => r.weekStart === snap.weekStart)
+  if (existing && !repOverwriteArmed) {
+    repOverwriteArmed = true
+    repGenerateBtn.textContent = '确认覆盖本周周报？'
+    setTimeout(updateRepGenerateBtn, 3000)
+    return
+  }
+  doGenerateWeekly()
+})
+
+async function doGenerateWeekly() {
+  if (repGenerating) return
+  if (!API_KEY) {
+    renderRepStatus('key')
+    return
+  }
+  repGenerating = true
+  repGenerateBtn.disabled = true
+  repGenerateBtn.textContent = '生成中…'
+  renderRepStatus('loading')
+  try {
+    const snapshot = buildWeeklySnapshot()
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: weeklyPrompt },
+          { role: 'user', content: `本周数据快照：\n${JSON.stringify(snapshot)}\n请写周报。` },
+        ],
+        temperature: 0.5,
+        max_tokens: 1200,
+      }),
+    })
+    if (!res.ok) {
+      throw new Error(ERROR_MSGS[res.status] || `网络异常或服务暂时不可用（HTTP ${res.status}），请稍后重试`)
+    }
+    const data = await res.json()
+    const content = stripCodeFence((data.choices?.[0]?.message?.content || '').trim())
+    if (!content) throw new Error('AI 返回内容为空，请重试')
+    repEditorEl.value = content
+    const reports = loadReports()
+    const existing = reports.find((r) => r.weekStart === snapshot.weekStart)
+    if (existing) {
+      existing.weekly = content
+      existing.createdAt = Date.now()
+    } else {
+      reports.unshift({ id: 'r' + Date.now(), weekStart: snapshot.weekStart, weekly: content, upward: null, createdAt: Date.now() })
+    }
+    saveReports(reports)
+    repCopyBtn.hidden = false
+    renderRepHistory()
+    refreshRepStats()
+    updateRepGenerateBtn()
+    renderRepStatus('success', '周报已生成，可直接编辑后复制')
+    logActivity('report-weekly', `生成周报：${snapshot.weekStart} 起的一周`)
+  } catch (err) {
+    renderRepStatus('error', err.name === 'TypeError' ? '网络异常，请检查网络后重试' : err.message)
+  } finally {
+    repGenerating = false
+    repGenerateBtn.disabled = false
+    updateRepGenerateBtn()
+  }
+}
+
+function renderRepStatus(kind, msg = '') {
+  repStatusEl.innerHTML = ''
+  if (kind === 'none') return
+  const card = el(
+    'div',
+    'rep-status' +
+      (kind === 'error' || kind === 'key' ? ' rep-status-error' : kind === 'success' ? ' rep-status-success' : ''),
+  )
+  if (kind === 'loading') {
+    card.append(el('div', 'rep-spinner'), el('p', 'rep-status-text', '正在生成，约需 10~20 秒…'))
+  } else if (kind === 'key') {
+    card.append(
+      el('div', 'rep-status-icon', '🔑'),
+      el('h3', 'rep-status-title', '还没配置 DeepSeek API Key'),
+      el('p', 'rep-status-text', '复制 .env.example 为 .env，填入你的 key 后刷新页面'),
+    )
+  } else if (kind === 'error') {
+    card.append(el('div', 'rep-status-icon', '⚠️'), el('h3', 'rep-status-title', '生成失败'), el('p', 'rep-status-text', msg))
+    const retry = el('button', 'btn-secondary', '重试')
+    retry.type = 'button'
+    retry.addEventListener('click', doGenerateWeekly)
+    card.append(retry)
+  } else if (kind === 'success') {
+    card.append(el('div', 'rep-status-icon', '✅'), el('p', 'rep-status-text', msg))
+  }
+  repStatusEl.append(card)
+}
+
+// ===== 生成向上汇报（基于标签一的当前周报内容） =====
+repUpwardBtn.addEventListener('click', doGenerateUpward)
+
+async function doGenerateUpward() {
+  const weeklyText = repEditorEl.value.trim()
+  if (!weeklyText) {
+    renderRepUpwardStatus('info', '先在「生成本周周报」标签生成周报')
+    return
+  }
+  if (repUpwardGenerating) return
+  if (!API_KEY) {
+    renderRepUpwardStatus('key')
+    return
+  }
+  repUpwardGenerating = true
+  repUpwardBtn.disabled = true
+  repUpwardBtn.textContent = '生成中…'
+  renderRepUpwardStatus('loading')
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: upwardPrompt },
+          { role: 'user', content: `我的周报原文：\n${weeklyText}\n请改写。` },
+        ],
+        temperature: 0.5,
+        max_tokens: 600,
+      }),
+    })
+    if (!res.ok) {
+      throw new Error(ERROR_MSGS[res.status] || `网络异常或服务暂时不可用（HTTP ${res.status}），请稍后重试`)
+    }
+    const data = await res.json()
+    const content = stripCodeFence((data.choices?.[0]?.message?.content || '').trim())
+    if (!content) throw new Error('AI 返回内容为空，请重试')
+    repUpwardEditorEl.value = content
+    repUpwardCopyBtn.hidden = false
+    // 回填到同一周的记录
+    const snap = buildWeeklySnapshot()
+    const reports = loadReports()
+    const r = reports.find((x) => x.weekStart === snap.weekStart)
+    if (r) {
+      r.upward = content
+      saveReports(reports)
+      renderRepHistory()
+    }
+    renderRepUpwardStatus('success', '向上汇报已生成，可直接编辑后复制')
+    logActivity('report-upward', '生成向上汇报')
+  } catch (err) {
+    renderRepUpwardStatus('error', err.name === 'TypeError' ? '网络异常，请检查网络后重试' : err.message)
+  } finally {
+    repUpwardGenerating = false
+    repUpwardBtn.disabled = false
+    repUpwardBtn.textContent = '生成向上汇报'
+  }
+}
+
+function renderRepUpwardStatus(kind, msg = '') {
+  repUpwardStatusEl.innerHTML = ''
+  if (kind === 'none') return
+  const card = el(
+    'div',
+    'rep-status' +
+      (kind === 'error' || kind === 'key' ? ' rep-status-error' : kind === 'success' ? ' rep-status-success' : ''),
+  )
+  if (kind === 'loading') {
+    card.append(el('div', 'rep-spinner'), el('p', 'rep-status-text', '正在改写，约需 10~15 秒…'))
+  } else if (kind === 'key') {
+    card.append(
+      el('div', 'rep-status-icon', '🔑'),
+      el('h3', 'rep-status-title', '还没配置 DeepSeek API Key'),
+      el('p', 'rep-status-text', '复制 .env.example 为 .env，填入你的 key 后刷新页面'),
+    )
+  } else if (kind === 'error') {
+    card.append(el('div', 'rep-status-icon', '⚠️'), el('h3', 'rep-status-title', '生成失败'), el('p', 'rep-status-text', msg))
+    const retry = el('button', 'btn-secondary', '重试')
+    retry.type = 'button'
+    retry.addEventListener('click', doGenerateUpward)
+    card.append(retry)
+  } else if (kind === 'info') {
+    card.append(el('div', 'rep-status-icon', 'ℹ️'), el('p', 'rep-status-text', msg))
+  } else if (kind === 'success') {
+    card.append(el('div', 'rep-status-icon', '✅'), el('p', 'rep-status-text', msg))
+  }
+  repUpwardStatusEl.append(card)
+}
+
+// ===== 复制 =====
+async function copyRepText(text) {
+  try {
+    await navigator.clipboard.writeText(text)
+    showToast('已复制')
+  } catch {
+    const ta = el('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.append(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    ta.remove()
+    showToast(ok ? '已复制' : '复制失败，请手动选择文本复制')
+  }
+}
+
+repCopyBtn.addEventListener('click', () => copyRepText(repEditorEl.value))
+repUpwardCopyBtn.addEventListener('click', () => copyRepText(repUpwardEditorEl.value))
+$('rep-goto-workbench').addEventListener('click', () => {
+  $('screen-2').scrollIntoView({ behavior: 'smooth' })
+})
+
+// ===== 历史周报（按周倒序 8 条，点击加载回编辑区） =====
+function renderRepHistory() {
+  const list = loadReports()
+  repHistoryListEl.innerHTML = ''
+  repHistoryEmptyEl.hidden = list.length > 0
+  for (const r of list) {
+    const li = el('li', 'rep-history-item')
+    const btn = el('button', 'rep-history-row')
+    btn.type = 'button'
+    btn.append(
+      el('span', 'rep-history-week', `${r.weekStart} 起的一周`),
+      el('span', 'rep-history-flags', (r.weekly ? '周报' : '') + (r.upward ? ' + 汇报' : '')),
+    )
+    btn.addEventListener('click', () => {
+      repEditorEl.value = r.weekly || ''
+      repUpwardEditorEl.value = r.upward || ''
+      repEditorMetaEl.textContent = `${r.weekStart} 起的一周`
+      repCopyBtn.hidden = !r.weekly
+      repUpwardCopyBtn.hidden = !r.upward
+      renderRepStatus('none')
+      renderRepUpwardStatus('none')
+      setRepTab('weekly')
+      updateRepGenerateBtn()
+    })
+    li.append(btn)
+    repHistoryListEl.append(li)
+  }
+}
+
+// ===== 初始化 =====
+renderRepHistory()
+refreshRepStats()
+updateRepGenerateBtn()
