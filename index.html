@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>新人上手手册</title>
+  </head>
+  <body>
+    <nav class="top-nav" id="top-nav">
+      <div class="nav-inner">
+        <ul class="nav-links" id="nav-links">
+          <li><a href="#screen-2" class="nav-link" data-screen="screen-2">工作台</a></li>
+          <li><a href="#screen-3" class="nav-link" data-screen="screen-3">岗位拆解</a></li>
+          <li><a href="#screen-4" class="nav-link" data-screen="screen-4">台账</a></li>
+          <li><a href="#screen-6" class="nav-link" data-screen="screen-6">汇报</a></li>
+          <li><a href="#screen-7" class="nav-link" data-screen="screen-7">成长</a></li>
+        </ul>
+        <div class="nav-right">
+          <div class="theme-preview" id="theme-preview">
+            <span class="theme-preview-label">配色预览</span>
+            <button class="theme-dot theme-blue" data-theme="blue" title="理性蓝"></button>
+            <button class="theme-dot theme-orange" data-theme="orange" title="暖砂橙"></button>
+            <button class="theme-dot theme-green" data-theme="green" title="松石绿"></button>
+          </div>
+          <button class="nav-burger" id="nav-burger" aria-label="菜单" aria-expanded="false">☰</button>
+        </div>
+      </div>
+    </nav>
+
+    <main>
+      <!-- 第 1 屏：开场 -->
+      <section id="screen-1" class="screen opening-screen">
+        <h1 class="opening-title">新人上手手册</h1>
+        <p class="opening-slogan">从拿到 offer，到真正会干活</p>
+        <button id="opening-cta" class="opening-cta" type="button">打开我的工作台</button>
+        <div class="opening-arrow" aria-hidden="true">↓</div>
+      </section>
+
+      <!-- 第 2 屏：今日工作台（占位） -->
+      <section id="screen-2" class="screen placeholder-screen">
+        <h2>第 2 屏 · 今日工作台</h2>
+        <p>按时段问候语 + 粘贴排期输入 + 四大统计卡片 + 本月日历 + 最近动态（待开发）</p>
+      </section>
+
+      <!-- 第 3 屏：岗位拆解（已开发，原样保留） -->
+      <section id="screen-3" class="screen">
+        <div id="app">
+          <header class="hero">
+            <h1>岗位拆解</h1>
+            <p class="hero-sub">输入岗位名，AI 给你一份真实工作地图</p>
+          </header>
+
+          <section class="input-card" id="input-card">
+            <div class="input-row">
+              <input
+                id="job-input"
+                type="text"
+                placeholder="输入你的岗位，如：新媒体运营 / 产品经理 / 审计"
+                autocomplete="off"
+              />
+              <button id="generate-btn" class="btn-primary">拆解这个岗位</button>
+            </div>
+          </section>
+
+          <section class="status-area" id="status-area"></section>
+
+          <section class="result-area" id="result-area"></section>
+
+          <section class="library">
+            <h2 class="section-title">岗位库</h2>
+            <p class="section-sub">29 个真实岗位资料：点格子看完整拆解，右上角 ☆ 收藏</p>
+            <div class="job-grid" id="preset-grid"></div>
+
+            <h2 class="section-title fav-title">岗位收藏</h2>
+            <p class="section-sub" id="fav-empty">还没有收藏的岗位，点岗位库格子上的 ☆ 试试</p>
+            <div class="job-grid" id="fav-grid"></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- 第 4 屏：项目台账（占位） -->
+      <section id="screen-4" class="screen placeholder-screen">
+        <h2>第 4 屏 · 项目台账</h2>
+        <p>粘贴工作清单自动整理：进度阶段、关键节点、负责人、风险项一眼看清（待开发）</p>
+      </section>
+
+      <!-- 第 5 屏：会议纪要（占位） -->
+      <section id="screen-5" class="screen placeholder-screen">
+        <h2>第 5 屏 · 会议纪要</h2>
+        <p>上传文档或录音，AI 提炼最终结论、待办、负责人与截止时间（待开发）</p>
+      </section>
+
+      <!-- 第 6 屏：周报与向上汇报（占位） -->
+      <section id="screen-6" class="screen placeholder-screen">
+        <h2>第 6 屏 · 周报与向上汇报</h2>
+        <p>自动汇总台账与纪要，生成三段式周报和向上汇报版本（待开发）</p>
+      </section>
+
+      <!-- 第 7 屏：新人开挂室（占位） -->
+      <section id="screen-7" class="screen placeholder-screen">
+        <h2>第 7 屏 · 新人开挂室</h2>
+        <p>充电区：20 本新人书单；破局区：16 条困境三套解法（待开发）</p>
+      </section>
+
+      <!-- 第 8 屏：关于 & 初衷（占位） -->
+      <section id="screen-8" class="screen placeholder-screen">
+        <h2>第 8 屏 · 关于 & 初衷</h2>
+        <p>创作初衷与使用小贴士（待开发）</p>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

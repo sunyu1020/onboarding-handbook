@@ -2,7 +2,7 @@
 """
 岗位拆解 Prompt v2 回归测试
 用法:
-    export DEEPSEEK_API_KEY=sk-xxxx   (PowerShell: $env:DEEPSEEK_API_KEY="sk-xxxx")
+    export DEEPSEEK_API_KEY=sk-xxxx   (PowerShell: $env:DEEPSEEK_API_KEY="sk-xxxx（历史中的真实key已清除，请使用环境变量注入）")
     python test_prompt.py
 产出:
     tests/report.md          自动评分报告
