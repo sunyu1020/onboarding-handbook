@@ -1535,9 +1535,6 @@ refreshProjects()
 // 第 5 屏：会议纪要
 // ============================================================
 const MEETINGS_KEY = 'odb_meetings'
-// 录音转写是否降级（浏览器 WebSocket 无法携带自定义 Header，
-// 若 DashScope 不支持 query 鉴权则置 true，录音入口显示「即将上线」）
-let ASR_DOWNGRADED = true // 实测降级：浏览器 WS 无法鉴权（query token 返回 401，Header 无法在浏览器携带），卡点见交付说明
 
 // ===== 第 5 屏 DOM =====
 const meetInputTabsEl = $('meet-input-tabs')
@@ -1590,10 +1587,6 @@ meetInputTabsEl.addEventListener('click', (e) => {
   const tab = e.target.closest('.meet-input-tab')
   if (!tab) return
   const mode = tab.dataset.mode
-  if (mode === 'audio' && ASR_DOWNGRADED) {
-    renderMeetStatus('info', '录音转写即将上线，可先粘贴文字或上传文档')
-    return
-  }
   setMeetMode(mode)
 })
 
@@ -2037,16 +2030,16 @@ function resampleToPCM16(audioBuf, targetRate) {
 }
 
 // DashScope paraformer-realtime-v2：WebSocket 分片推流识别
-// 浏览器 WebSocket 无法携带自定义 Header，鉴权通过 query 参数 token 传递
+// 鉴权：浏览器 WebSocket 无法携带 Header，实测 ?api_key= query 鉴权可用
+// 协议：task_group/task/model 放 payload；服务端事件在 header.event；task-started 后才可推流
 function dashscopeTranscribe(pcmBuffer, onTick) {
   return new Promise((resolve, reject) => {
     const key = import.meta.env.VITE_DASHSCOPE_API_KEY || ''
-    const wsUrl = `wss://dashscope.aliyuncs.com/api-ws/v1/inference?token=${encodeURIComponent(key)}`
+    const wsUrl = `wss://dashscope.aliyuncs.com/api-ws/v1/inference?api_key=${encodeURIComponent(key)}`
     const ws = new WebSocket(wsUrl)
     const taskId = 'asr-' + Date.now()
     let fullText = ''
     let partial = ''
-    let finished = false
     let settled = false
     const startTime = Date.now()
     const ticker = setInterval(() => {
@@ -2073,9 +2066,11 @@ function dashscopeTranscribe(pcmBuffer, onTick) {
     ws.onopen = () => {
       ws.send(
         JSON.stringify({
-          header: { action: 'run-task', task_id: taskId, streaming: 'duplex', task_group: 'audio' },
+          header: { action: 'run-task', task_id: taskId, streaming: 'duplex' },
           payload: {
-            task: 'paraformer-realtime-v2',
+            task_group: 'audio',
+            task: 'asr',
+            model: 'paraformer-realtime-v2',
             function: 'recognition',
             parameters: {
               format: 'pcm',
@@ -2090,21 +2085,18 @@ function dashscopeTranscribe(pcmBuffer, onTick) {
           },
         }),
       )
-      // 100ms 一帧（16kHz 16bit 单声道 = 3200 字节），依序推流
-      const frame = 3200
-      let off = 0
-      const pushNext = () => {
-        if (settled) return
-        if (off >= pcmBuffer.byteLength) {
-          ws.send(JSON.stringify({ header: { action: 'finish-task', task_id: taskId }, payload: {} }))
-          return
-        }
-        const end = Math.min(off + frame, pcmBuffer.byteLength)
-        ws.send(pcmBuffer.slice(off, end))
-        off = end
-        setTimeout(pushNext, 90)
+    }
+
+    // 收到 task-started 后开始按 100ms 一帧（16kHz 16bit 单声道 = 3200 字节）推流
+    const pushNext = (off) => {
+      if (settled) return
+      if (off >= pcmBuffer.byteLength) {
+        ws.send(JSON.stringify({ header: { action: 'finish-task', task_id: taskId }, payload: { input: {} } }))
+        return
       }
-      pushNext()
+      const end = Math.min(off + 3200, pcmBuffer.byteLength)
+      ws.send(pcmBuffer.slice(off, end))
+      setTimeout(() => pushNext(end), 90)
     }
 
     ws.onmessage = (ev) => {
@@ -2115,16 +2107,15 @@ function dashscopeTranscribe(pcmBuffer, onTick) {
       } catch {
         return
       }
-      const action = msg.header?.action || ''
-      if (action === 'task-failed') {
-        const code = msg.header?.code || msg.header?.status_code || ''
-        const reason = msg.header?.message || msg.header?.status_text || code || '未知错误'
+      const event = msg.header?.event || ''
+      if (event === 'task-failed') {
+        const code = msg.header?.error_code || ''
+        const reason = msg.header?.error_message || code || '未知错误'
         settle(reject, new Error(`转写服务报错：${reason}`))
         return
       }
-      if (action === 'task-finished') {
+      if (event === 'task-finished') {
         if (partial) fullText += partial
-        finished = true
         settle(() => {
           try {
             ws.close()
@@ -2133,7 +2124,11 @@ function dashscopeTranscribe(pcmBuffer, onTick) {
         })
         return
       }
-      if (action === 'result' || msg.payload?.output) {
+      if (event === 'task-started') {
+        pushNext(0)
+        return
+      }
+      if (event === 'result-generated') {
         const out = msg.payload?.output
         if (out?.sentence) {
           const t = out.sentence.text || ''
@@ -2151,26 +2146,11 @@ function dashscopeTranscribe(pcmBuffer, onTick) {
 
     ws.onerror = () => settle(reject, new Error('转写服务连接失败，请稍后重试'))
     ws.onclose = () => {
-      if (!settled) settle(reject, finished ? null : new Error('转写连接中断'))
-      // finished 情况下 onclose 由 task-finished 流程关闭触发，settle 已处理
+      if (!settled) settle(reject, new Error('转写连接中断，请重试'))
     }
   })
 }
 
-// 降级开关（实测后由外部决定调用）
-function setAsrDowngraded(v) {
-  ASR_DOWNGRADED = v
-  const tab = $('meet-audio-tab')
-  if (v) {
-    tab.disabled = true
-    tab.title = '录音转写即将上线，可先粘贴文字或上传文档'
-  } else {
-    tab.disabled = false
-    tab.title = ''
-  }
-}
-
 // ===== 事件绑定与初始化 =====
 meetExtractBtnEl.addEventListener('click', extractMeeting)
-setAsrDowngraded(ASR_DOWNGRADED)
 renderMeetHistory()
