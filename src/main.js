@@ -6,6 +6,8 @@ import meetingPrompt from './prompt-meeting.txt?raw'
 import weeklyPrompt from './prompt-weekly.txt?raw'
 import upwardPrompt from './prompt-upward.txt?raw'
 import jobsData from '../data/jobs.json'
+import booksData from '../data/books.json'
+import dilemmasData from '../data/dilemmas.json'
 
 // ===== 常量 =====
 // systemPrompt 逐字复制自 prompt-岗位拆解.md「System Prompt」代码块（v2.1 定稿，一字不改）
@@ -485,6 +487,8 @@ document.querySelectorAll('.screen[id]').forEach((s) => navHighlighter.observe(s
 // odb_projects       项目台账：{id,name,stage,deadline,owner,risks,todoIds,createdAt,updatedAt}
 // odb_meetings       会议纪要：{id,title,date,conclusions,actionItems,openQuestions,createdAt}（保留最近 20 条）
 // odb_reports        周报：{id,weekStart,weekly,upward,createdAt}（保留最近 8 条）
+// odb_book_status    书单阅读状态：{bookId: 'want'|'reading'|'read'}（books.json 的 status 仅为默认值）
+// odb_dilemma_fav    困境收藏：困境 id 数组
 
 // ===== 第 2 屏 DOM =====
 const dashGreetingEl = $('dash-greeting')
@@ -2563,3 +2567,297 @@ function renderRepHistory() {
 renderRepHistory()
 refreshRepStats()
 updateRepGenerateBtn()
+
+// ============================================================
+// 第 7 屏：新人开挂室（书单 + 困境，纯本地，不调 AI）
+// ============================================================
+const BOOK_STATUS_KEY = 'odb_book_status' // {bookId: 'want'|'reading'|'read'}，books.json 的 status 仅为默认值
+const DILEMMA_FAV_KEY = 'odb_dilemma_fav' // 困境 id 数组
+
+// ===== 第 7 屏 DOM =====
+const openTabsEl = $('open-tabs')
+const openPanelBooksEl = $('open-panel-books')
+const openPanelDilemmasEl = $('open-panel-dilemmas')
+const openRoleFilterEl = $('open-role-filter')
+const openStageFiltersEl = $('open-stage-filters')
+const openBooksEl = $('open-books')
+const openBooksEmptyEl = $('open-books-empty')
+const openDilemmaInputEl = $('open-dilemma-input')
+const openDilemmaTagsEl = $('open-dilemma-tags')
+const openFavOnlyEl = $('open-fav-only')
+const openDilemmaMatchEl = $('open-dilemma-match')
+const openDilemmaDetailEl = $('open-dilemma-detail')
+const openDrawerEl = $('open-drawer')
+const openDrawerMaskEl = $('open-drawer-mask')
+const openDrawerBodyEl = $('open-drawer-body')
+const openDrawerCloseEl = $('open-drawer-close')
+
+const PRIO_ORDER = { P0: 0, P1: 1, P2: 2 }
+const STAGE_ORDER = { 入职前: 0, '入职1个月': 1, '入职3个月': 2 }
+const DOT_LABELS = { want: '想读', reading: '在读', read: '已读' }
+const PRIO_LABELS = { P0: 'P0 必读', P1: 'P1 进阶', P2: 'P2 拓展' }
+
+let bookRoleFilter = 'all'
+let bookStageFilter = 'all'
+let selectedDilemmaId = null
+let favOnly = false
+
+function loadBookStatus() {
+  try {
+    return JSON.parse(localStorage.getItem(BOOK_STATUS_KEY)) || {}
+  } catch {
+    return {}
+  }
+}
+
+function saveBookStatus(m) {
+  localStorage.setItem(BOOK_STATUS_KEY, JSON.stringify(m))
+}
+
+function loadDilemmaFav() {
+  try {
+    return JSON.parse(localStorage.getItem(DILEMMA_FAV_KEY)) || []
+  } catch {
+    return []
+  }
+}
+
+function saveDilemmaFav(list) {
+  localStorage.setItem(DILEMMA_FAV_KEY, JSON.stringify(list))
+}
+
+// ===== 标签切换 =====
+function setOpenTab(tab) {
+  document.querySelectorAll('.open-tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab))
+  openPanelBooksEl.hidden = tab !== 'books'
+  openPanelDilemmasEl.hidden = tab !== 'dilemmas'
+}
+
+openTabsEl.addEventListener('click', (e) => {
+  const b = e.target.closest('.open-tab')
+  if (b) setOpenTab(b.dataset.tab)
+})
+
+// ===== 书单 =====
+function getBookStatus(b) {
+  const m = loadBookStatus()
+  return m[b.id] || b.status || 'want'
+}
+
+function renderRoleFilter() {
+  const roles = [...new Set(booksData.books.flatMap((b) => b.forRoles || []))].filter((r) => r !== '全部')
+  openRoleFilterEl.innerHTML = ''
+  const all = el('option', '', '全部岗位')
+  all.value = 'all'
+  openRoleFilterEl.append(all)
+  for (const r of roles) {
+    const opt = el('option', '', r)
+    opt.value = r
+    openRoleFilterEl.append(opt)
+  }
+  openRoleFilterEl.value = bookRoleFilter
+}
+
+function renderBooks() {
+  const statusMap = loadBookStatus()
+  let list = [...booksData.books]
+  // 筛选：岗位（forRoles 含该岗位或含「全部」）+ 阅读阶段，AND 叠加
+  if (bookRoleFilter !== 'all') {
+    list = list.filter((b) => (b.forRoles || []).includes(bookRoleFilter) || (b.forRoles || []).includes('全部'))
+  }
+  if (bookStageFilter !== 'all') {
+    list = list.filter((b) => (b.readingStage || '入职前') === bookStageFilter)
+  }
+  // 排序：priority → readingStage → title
+  list.sort(
+    (a, b) =>
+      PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority] ||
+      STAGE_ORDER[a.readingStage || '入职前'] - STAGE_ORDER[b.readingStage || '入职前'] ||
+      a.title.localeCompare(b.title, 'zh-Hans-CN'),
+  )
+  openBooksEl.innerHTML = ''
+  openBooksEmptyEl.hidden = list.length > 0
+  list.forEach((b, i) => {
+    const card = el('div', 'open-book-card' + (i % 4 === 1 || i % 4 === 2 ? ' sink' : ''))
+    card.append(el('div', 'open-book-cat', b.category))
+    const cover = el('div', 'open-book-cover')
+    cover.append(el('div', 'open-book-title', b.title), el('div', 'open-book-author', b.author))
+    const status = statusMap[b.id] || b.status || 'want'
+    const dot = el('button', 'open-book-dot dot-' + status, status === 'read' ? '✓' : '')
+    dot.type = 'button'
+    dot.title = `${DOT_LABELS[status]}（点击切换）`
+    dot.setAttribute('aria-label', '切换阅读状态：' + DOT_LABELS[status])
+    dot.addEventListener('click', (e) => {
+      e.stopPropagation()
+      cycleBookStatus(b)
+    })
+    card.append(cover, dot)
+    card.addEventListener('click', () => openBookDrawer(b))
+    openBooksEl.append(card)
+  })
+}
+
+// 圆点循环：想读 → 在读 → 已读 → 想读，只写 localStorage，绝不写回 books.json
+function cycleBookStatus(b) {
+  const m = loadBookStatus()
+  const cur = m[b.id] || b.status || 'want'
+  const next = cur === 'want' ? 'reading' : cur === 'reading' ? 'read' : 'want'
+  m[b.id] = next
+  saveBookStatus(m)
+  renderBooks()
+}
+
+// ===== 书单抽屉 =====
+function openBookDrawer(b) {
+  openDrawerBodyEl.innerHTML = ''
+  openDrawerBodyEl.append(el('div', 'open-drawer-title', b.title), el('div', 'open-drawer-author', b.author))
+  const tags = el('div', 'open-drawer-tags')
+  tags.append(el('span', 'open-drawer-tag', b.category), el('span', 'open-drawer-tag', PRIO_LABELS[b.priority] || b.priority))
+  for (const r of b.forRoles || []) tags.append(el('span', 'open-drawer-tag', r))
+  tags.append(el('span', 'open-drawer-tag', b.readingStage || ''))
+  tags.append(el('span', 'open-drawer-tag open-drawer-tag-accent', DOT_LABELS[getBookStatus(b)]))
+  openDrawerBodyEl.append(tags)
+  const reasonBox = el('div', 'open-drawer-reason-box')
+  reasonBox.append(el('div', 'open-drawer-reason-label', '推荐理由'), el('p', 'open-drawer-reason', b.reason))
+  openDrawerBodyEl.append(reasonBox)
+  const searchBtn = el('button', 'btn-primary open-drawer-search', '在线搜索')
+  searchBtn.type = 'button'
+  searchBtn.addEventListener('click', () => {
+    window.open(`https://search.douban.com/book/subject_search?search_text=${encodeURIComponent(b.title)}`, '_blank')
+  })
+  openDrawerBodyEl.append(searchBtn)
+  openDrawerEl.hidden = false
+  openDrawerMaskEl.hidden = false
+  requestAnimationFrame(() => {
+    openDrawerEl.classList.add('open')
+    openDrawerMaskEl.classList.add('open')
+  })
+}
+
+function closeBookDrawer() {
+  openDrawerEl.classList.remove('open')
+  openDrawerMaskEl.classList.remove('open')
+  setTimeout(() => {
+    openDrawerEl.hidden = true
+    openDrawerMaskEl.hidden = true
+  }, 300)
+}
+
+openDrawerCloseEl.addEventListener('click', closeBookDrawer)
+openDrawerMaskEl.addEventListener('click', closeBookDrawer)
+
+openRoleFilterEl.addEventListener('change', () => {
+  bookRoleFilter = openRoleFilterEl.value
+  renderBooks()
+})
+openStageFiltersEl.addEventListener('click', (e) => {
+  const b = e.target.closest('.open-stage-btn')
+  if (!b) return
+  bookStageFilter = b.dataset.stage
+  document.querySelectorAll('.open-stage-btn').forEach((x) => x.classList.toggle('active', x === b))
+  renderBooks()
+})
+
+// ===== 困境 =====
+function renderDilemmaTags() {
+  const fav = loadDilemmaFav()
+  const list = favOnly ? dilemmasData.dilemmas.filter((d) => fav.includes(d.id)) : dilemmasData.dilemmas
+  openDilemmaTagsEl.innerHTML = ''
+  if (!list.length) {
+    openDilemmaTagsEl.append(el('span', 'open-tags-empty', '还没有收藏的困境'))
+    return
+  }
+  for (const d of list) {
+    const tag = el(
+      'button',
+      'open-dilemma-tag' + (d.id === selectedDilemmaId ? ' active' : ''),
+      (fav.includes(d.id) ? '☆ ' : '') + d.title,
+    )
+    tag.type = 'button'
+    tag.addEventListener('click', () => selectDilemma(d.id))
+    openDilemmaTagsEl.append(tag)
+  }
+}
+
+function selectDilemma(id) {
+  selectedDilemmaId = id
+  renderDilemmaTags()
+  const d = dilemmasData.dilemmas.find((x) => x.id === id)
+  if (!d) return
+  renderDilemmaDetail(d)
+}
+
+// 三栏解法：顺序严格跟随 JSON 的 solutions 数组（强硬/迂回/共赢），逐字段渲染
+function renderDilemmaDetail(d) {
+  const fav = loadDilemmaFav()
+  const faved = fav.includes(d.id)
+  openDilemmaDetailEl.innerHTML = ''
+  const wrap = el('div', 'open-solutions')
+  wrap.append(el('h3', 'open-dilemma-title', d.title))
+  const cols = el('div', 'open-solution-cols')
+  for (const s of d.solutions) {
+    const card = el('div', 'open-solution-card')
+    const favBtn = el('button', 'open-solution-fav' + (faved ? ' faved' : ''), faved ? '★' : '☆')
+    favBtn.type = 'button'
+    favBtn.title = faved ? '取消收藏这条困境' : '收藏这条困境'
+    favBtn.addEventListener('click', () => toggleDilemmaFav(d.id))
+    card.append(favBtn)
+    card.append(el('div', 'open-solution-style', s.style))
+    card.append(el('p', 'open-solution-say', '「' + s.say + '」'))
+    card.append(el('p', 'open-solution-do', s.do))
+    card.append(el('p', 'open-solution-scene', '适用场景：' + s.scene))
+    card.append(el('p', 'open-solution-caution', '⚠ ' + s.caution))
+    cols.append(card)
+  }
+  wrap.append(cols)
+  openDilemmaDetailEl.append(wrap)
+}
+
+function toggleDilemmaFav(id) {
+  const fav = loadDilemmaFav()
+  const i = fav.indexOf(id)
+  if (i >= 0) fav.splice(i, 1)
+  else fav.unshift(id)
+  saveDilemmaFav(fav)
+  renderDilemmaTags()
+  if (selectedDilemmaId === id) {
+    const d = dilemmasData.dilemmas.find((x) => x.id === id)
+    if (d) renderDilemmaDetail(d)
+  }
+}
+
+openFavOnlyEl.addEventListener('change', () => {
+  favOnly = openFavOnlyEl.checked
+  renderDilemmaTags()
+})
+
+// 本地关键词匹配，不调任何 AI 接口
+openDilemmaInputEl.addEventListener('input', () => {
+  const kw = openDilemmaInputEl.value.trim()
+  openDilemmaMatchEl.innerHTML = ''
+  if (!kw) return
+  const hits = dilemmasData.dilemmas.filter((d) => d.title.includes(kw))
+  if (!hits.length) {
+    openDilemmaMatchEl.append(el('p', 'open-match-empty', '没找到完全匹配的，试试点上面的标签，或换几个关键词'))
+    return
+  }
+  for (const d of hits) {
+    const btn = el('button', 'open-match-item', d.title)
+    btn.type = 'button'
+    btn.addEventListener('click', () => {
+      selectDilemma(d.id)
+      openDilemmaInputEl.value = ''
+      openDilemmaMatchEl.innerHTML = ''
+    })
+    openDilemmaMatchEl.append(btn)
+  }
+})
+
+// ============================================================
+// 第 8 屏：关于 & 初衷（纯静态文案，无交互逻辑）
+// ============================================================
+
+// ===== 第 7 屏初始化 =====
+renderRoleFilter()
+renderBooks()
+renderDilemmaTags()

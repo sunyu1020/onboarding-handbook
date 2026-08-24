@@ -343,18 +343,86 @@
         </div>
       </section>
 
-      <!-- 第 7 屏：新人开挂室（占位） -->
-      <section id="screen-7" class="screen placeholder-screen">
-        <h2>第 7 屏 · 新人开挂室</h2>
-        <p>充电区：20 本新人书单；破局区：16 条困境三套解法（待开发）</p>
+      <!-- 第 7 屏：新人开挂室 -->
+      <section id="screen-7" class="screen">
+        <div class="open-wrap">
+          <header class="open-header">
+            <h2 class="open-title">新人开挂室</h2>
+            <p class="open-sub">充电区读书，破局区解困</p>
+          </header>
+
+          <div class="open-tabs" id="open-tabs">
+            <button class="open-tab active" data-tab="books" type="button">充电区 · 新人书单</button>
+            <button class="open-tab" data-tab="dilemmas" type="button">破局区 · 新人困境</button>
+          </div>
+
+          <!-- 书单 tab -->
+          <section class="open-panel" id="open-panel-books">
+            <div class="open-sort-hint">按必读优先级排序：P0 入职前先看</div>
+            <div class="open-filters">
+              <select id="open-role-filter" class="open-select">
+                <option value="all">全部岗位</option>
+              </select>
+              <div class="open-stage-filters" id="open-stage-filters">
+                <button class="open-stage-btn active" data-stage="all" type="button">全部</button>
+                <button class="open-stage-btn" data-stage="入职前" type="button">入职前</button>
+                <button class="open-stage-btn" data-stage="入职1个月" type="button">入职1个月</button>
+                <button class="open-stage-btn" data-stage="入职3个月" type="button">入职3个月</button>
+              </div>
+            </div>
+            <div class="open-books" id="open-books"></div>
+            <div id="open-books-empty" class="open-empty" hidden>这个组合暂时没有推荐，放宽筛选看看</div>
+          </section>
+
+          <!-- 困境 tab -->
+          <section class="open-panel" id="open-panel-dilemmas" hidden>
+            <input
+              id="open-dilemma-input"
+              class="open-dilemma-input"
+              type="text"
+              placeholder="说说你现在遇到的困境…"
+              autocomplete="off"
+            />
+            <label class="open-fav-switch">
+              <input type="checkbox" id="open-fav-only" />
+              只看已收藏
+            </label>
+            <div class="open-dilemma-tags" id="open-dilemma-tags"></div>
+            <div id="open-dilemma-match" class="open-dilemma-match"></div>
+            <div id="open-dilemma-detail"></div>
+          </section>
+        </div>
       </section>
 
-      <!-- 第 8 屏：关于 & 初衷（占位） -->
-      <section id="screen-8" class="screen placeholder-screen">
-        <h2>第 8 屏 · 关于 & 初衷</h2>
-        <p>创作初衷与使用小贴士（待开发）</p>
+      <!-- 第 8 屏：关于 & 初衷 -->
+      <section id="screen-8" class="screen">
+        <div class="about-wrap">
+          <div class="about-head">
+            <span class="about-line"></span>
+            <h2 class="about-title">关于这个手册</h2>
+            <span class="about-line"></span>
+          </div>
+          <p class="about-motto">我是一个大四学生，经历了"拿到 offer 却不知道怎么干活"的慌，不想让和我一样的人再经历。</p>
+          <ul class="about-tips">
+            <li><span class="about-tip-icon">①</span>先拆一个岗位，看懂一份真实的工作地图</li>
+            <li><span class="about-tip-icon">②</span>把排期粘贴进来，让待办自己排好队</li>
+            <li><span class="about-tip-icon">③</span>遇到困境别硬扛，三套解法里挑一套开口</li>
+            <li><span class="about-tip-icon">④</span>每周五生成周报，让数据替你说话</li>
+          </ul>
+          <div class="about-end">
+            <p class="about-end-text">你已经比昨天的自己更接近会干活了</p>
+          </div>
+        </div>
       </section>
     </main>
+
+    <!-- 第 7 屏：书单详情抽屉 -->
+    <div class="open-drawer-mask" id="open-drawer-mask" hidden></div>
+    <aside class="open-drawer" id="open-drawer" hidden aria-label="书籍详情">
+      <button class="open-drawer-close" id="open-drawer-close" type="button" aria-label="关闭">×</button>
+      <div id="open-drawer-body"></div>
+    </aside>
+
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
