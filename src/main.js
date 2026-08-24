@@ -2,6 +2,7 @@ import './style.css'
 import systemPrompt from './prompt.txt?raw'
 import todoParsePromptRaw from './prompt-todo-parse.txt?raw'
 import projectParsePromptRaw from './prompt-project-parse.txt?raw'
+import meetingPrompt from './prompt-meeting.txt?raw'
 import jobsData from '../data/jobs.json'
 
 // ===== 常量 =====
@@ -480,6 +481,7 @@ document.querySelectorAll('.screen[id]').forEach((s) => navHighlighter.observe(s
 // odb_todos          待办：{id,title,dueDate,priority,note,done,createdAt,doneAt}
 // odb_activities     动态：{type,title,time}（最多保留 50 条）
 // odb_projects       项目台账：{id,name,stage,deadline,owner,risks,todoIds,createdAt,updatedAt}
+// odb_meetings       会议纪要：{id,title,date,conclusions,actionItems,openQuestions,createdAt}（保留最近 20 条）
 
 // ===== 第 2 屏 DOM =====
 const dashGreetingEl = $('dash-greeting')
@@ -1528,3 +1530,647 @@ projOwnerFilterEl.addEventListener('change', renderProjectList)
 projSearchEl.addEventListener('input', renderProjectList)
 
 refreshProjects()
+
+// ============================================================
+// 第 5 屏：会议纪要
+// ============================================================
+const MEETINGS_KEY = 'odb_meetings'
+// 录音转写是否降级（浏览器 WebSocket 无法携带自定义 Header，
+// 若 DashScope 不支持 query 鉴权则置 true，录音入口显示「即将上线」）
+let ASR_DOWNGRADED = true // 实测降级：浏览器 WS 无法鉴权（query token 返回 401，Header 无法在浏览器携带），卡点见交付说明
+
+// ===== 第 5 屏 DOM =====
+const meetInputTabsEl = $('meet-input-tabs')
+const meetFileRowEl = $('meet-file-row')
+const meetFileNameEl = $('meet-file-name')
+const meetFileClearEl = $('meet-file-clear')
+const meetInputEl = $('meet-input')
+const meetDocBtnEl = $('meet-doc-btn')
+const meetAudioBtnEl = $('meet-audio-btn')
+const meetExtractBtnEl = $('meet-extract-btn')
+const meetDocFileEl = $('meet-doc-file')
+const meetAudioFileEl = $('meet-audio-file')
+const meetProgressEl = $('meet-progress')
+const meetStatusEl = $('meet-status')
+const meetResultEl = $('meet-result')
+const meetHistoryListEl = $('meet-history-list')
+const meetHistoryEmptyEl = $('meet-history-empty')
+
+let meetMode = 'text'
+let meetExtracting = false
+
+ACT_ICONS['meeting-extract'] = '📋'
+ACT_ICONS['meeting-sync'] = '🔁'
+ACT_ICONS['meeting-del'] = '🗑️'
+
+// ===== 数据读写（保留最近 20 条） =====
+function loadMeetings() {
+  try {
+    return JSON.parse(localStorage.getItem(MEETINGS_KEY)) || []
+  } catch {
+    return []
+  }
+}
+
+function saveMeetings(list) {
+  localStorage.setItem(MEETINGS_KEY, JSON.stringify(list.slice(0, 20)))
+}
+
+// ===== 输入方式切换 =====
+function setMeetMode(mode) {
+  meetMode = mode
+  document.querySelectorAll('.meet-input-tab').forEach((b) => {
+    b.classList.toggle('active', b.dataset.mode === mode)
+  })
+  meetDocBtnEl.hidden = mode !== 'doc'
+  meetAudioBtnEl.hidden = mode !== 'audio'
+}
+
+meetInputTabsEl.addEventListener('click', (e) => {
+  const tab = e.target.closest('.meet-input-tab')
+  if (!tab) return
+  const mode = tab.dataset.mode
+  if (mode === 'audio' && ASR_DOWNGRADED) {
+    renderMeetStatus('info', '录音转写即将上线，可先粘贴文字或上传文档')
+    return
+  }
+  setMeetMode(mode)
+})
+
+// ===== 文档上传：txt / docx / pdf → 同一个原文 textarea =====
+meetDocBtnEl.addEventListener('click', () => meetDocFileEl.click())
+meetDocFileEl.addEventListener('change', async (e) => {
+  const file = e.target.files[0]
+  e.target.value = ''
+  if (!file) return
+  showMeetProgress(`读取中：${file.name}`)
+  try {
+    let text = ''
+    const lower = file.name.toLowerCase()
+    if (lower.endsWith('.txt')) {
+      text = await file.text()
+    } else if (lower.endsWith('.docx')) {
+      const mammoth = await import('mammoth')
+      const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })
+      text = result.value
+    } else if (lower.endsWith('.pdf')) {
+      const pdfjs = await import('pdfjs-dist')
+      const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default
+      pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
+      const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
+      const pages = []
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i)
+        const content = await page.getTextContent()
+        pages.push(content.items.map((it) => it.str).join(' '))
+      }
+      text = pages.join('\n')
+    } else {
+      throw new Error('不支持的文档格式，请用 txt / docx / pdf')
+    }
+    if (!text.trim()) throw new Error('没从这个文档里提取到文字')
+    meetInputEl.value = text.trim()
+    meetFileNameEl.textContent = file.name
+    meetFileRowEl.hidden = false
+    renderMeetStatus('success', `已读取 ${file.name}，可在下方修改后提炼`)
+  } catch (err) {
+    renderMeetStatus('error', err.message || '文档读取失败')
+  } finally {
+    hideMeetProgress()
+  }
+})
+
+meetFileClearEl.addEventListener('click', () => {
+  meetFileNameEl.textContent = ''
+  meetFileRowEl.hidden = true
+})
+
+// ===== 提炼主链路（DeepSeek） =====
+async function extractMeeting() {
+  const text = meetInputEl.value.trim()
+  if (!text) {
+    meetInputEl.focus()
+    return
+  }
+  if (meetExtracting) return
+  if (!API_KEY) {
+    renderMeetStatus('key')
+    return
+  }
+  meetExtracting = true
+  meetExtractBtnEl.disabled = true
+  meetExtractBtnEl.textContent = '提炼中…'
+  renderMeetStatus('loading')
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: meetingPrompt },
+          { role: 'user', content: `以下是会议记录原文：\n${text}\n请按铁律提炼。` },
+        ],
+        temperature: 0.3,
+        max_tokens: 1500,
+        response_format: { type: 'json_object' },
+      }),
+    })
+    if (!res.ok) {
+      throw new Error(ERROR_MSGS[res.status] || `网络异常或服务暂时不可用（HTTP ${res.status}），请稍后重试`)
+    }
+    const data = await res.json()
+    const content = data.choices?.[0]?.message?.content
+    if (!content) throw new Error('AI 返回内容为空，请重试')
+    const parsed = parseJsonSafe(content)
+    const meeting = {
+      id: 'm' + Date.now(),
+      title: parsed.meetingTitle || '未命名会议',
+      date: parsed.meetingDate || todayStr(),
+      conclusions: Array.isArray(parsed.conclusions) ? parsed.conclusions.filter(Boolean) : [],
+      actionItems: (Array.isArray(parsed.actionItems) ? parsed.actionItems : []).map((a) => ({
+        task: a.task || '',
+        owner: a.owner || '〔负责人待确认〕',
+        deadline: a.deadline || '〔时间待确认〕',
+        priority: ['high', 'medium', 'low'].includes(a.priority) ? a.priority : 'low',
+      })),
+      openQuestions: Array.isArray(parsed.openQuestions) ? parsed.openQuestions.filter(Boolean) : [],
+      createdAt: Date.now(),
+    }
+    if (!meeting.conclusions.length && !meeting.actionItems.length) {
+      throw new Error('这看起来不像会议记录，AI 没有可提炼的内容')
+    }
+    const meetings = loadMeetings()
+    meetings.unshift(meeting)
+    saveMeetings(meetings)
+    renderMeetStatus('none')
+    renderMeetingResult(meeting)
+    logActivity('meeting-extract', `提炼纪要：${meeting.title}`)
+    renderMeetHistory()
+  } catch (err) {
+    renderMeetStatus('error', err.name === 'TypeError' ? '网络异常，请检查网络后重试' : err.message)
+  } finally {
+    meetExtracting = false
+    meetExtractBtnEl.disabled = false
+    meetExtractBtnEl.textContent = '提炼纪要'
+  }
+}
+
+function renderMeetStatus(kind, msg = '') {
+  meetStatusEl.innerHTML = ''
+  if (kind === 'none') return
+  const card = el(
+    'div',
+    'meet-status' +
+      (kind === 'error' || kind === 'key' ? ' meet-status-error' : kind === 'success' ? ' meet-status-success' : ''),
+  )
+  if (kind === 'loading') {
+    card.append(el('div', 'meet-spinner'), el('p', 'meet-status-text', '正在提炼，约需 10~20 秒…'))
+  } else if (kind === 'key') {
+    card.append(
+      el('div', 'meet-status-icon', '🔑'),
+      el('h3', 'meet-status-title', '还没配置 DeepSeek API Key'),
+      el('p', 'meet-status-text', '复制 .env.example 为 .env，填入你的 key 后刷新页面'),
+    )
+  } else if (kind === 'error') {
+    card.append(el('div', 'meet-status-icon', '⚠️'), el('h3', 'meet-status-title', '提炼失败'), el('p', 'meet-status-text', msg))
+    const retry = el('button', 'btn-secondary', '重试')
+    retry.type = 'button'
+    retry.addEventListener('click', extractMeeting)
+    card.append(retry)
+  } else if (kind === 'info') {
+    card.append(el('div', 'meet-status-icon', 'ℹ️'), el('p', 'meet-status-text', msg))
+  } else if (kind === 'success') {
+    card.append(el('div', 'meet-status-icon', '✅'), el('p', 'meet-status-text', msg))
+  }
+  meetStatusEl.append(card)
+}
+
+function showMeetProgress(msg) {
+  meetProgressEl.textContent = msg
+  meetProgressEl.hidden = false
+}
+
+function hideMeetProgress() {
+  meetProgressEl.hidden = true
+}
+
+// ===== 结果渲染（可指定目标容器，供历史展开复用） =====
+function renderMeetingResult(m, target = meetResultEl) {
+  target.innerHTML = ''
+  const wrap = el('div', 'meet-result-wrap')
+  const head = el('div', 'meet-result-head')
+  const titleBox = el('div')
+  titleBox.append(el('h3', 'meet-result-title', m.title))
+  titleBox.append(el('div', 'meet-result-date', '📅 ' + (m.date || '')))
+  const actions = el('div', 'meet-result-actions')
+  const copyBtn = el('button', 'meet-copy-btn', '一键复制成可发群纯文本')
+  copyBtn.type = 'button'
+  copyBtn.addEventListener('click', () => copyMeetingText(m))
+  const syncBtn = el('button', 'meet-sync-btn', '待办同步到工作台')
+  syncBtn.type = 'button'
+  syncBtn.addEventListener('click', () => syncMeetingTodos(m))
+  actions.append(copyBtn, syncBtn)
+  head.append(titleBox, actions)
+  wrap.append(head)
+
+  // 一、结论
+  const cSec = el('section', 'meet-section')
+  cSec.append(el('h4', 'meet-sec-title', '一、结论'))
+  const cUl = el('ul', 'meet-list')
+  for (const c of m.conclusions) cUl.append(el('li', '', c))
+  cSec.append(cUl)
+  wrap.append(cSec)
+
+  // 二、待办（按优先级排序，high 在前）
+  const aSec = el('section', 'meet-section')
+  aSec.append(el('h4', 'meet-sec-title', '二、待办'))
+  const order = { high: 0, medium: 1, low: 2 }
+  const sorted = [...m.actionItems].sort((a, b) => order[a.priority] - order[b.priority])
+  const aUl = el('ul', 'meet-list meet-ai-list')
+  for (const a of sorted) {
+    const li = el('li', 'meet-ai-item')
+    if (a.priority === 'high') li.append(el('span', 'meet-ai-prio', '🔴'))
+    li.append(el('span', 'meet-ai-task', a.task))
+    const owner = el('span', 'meet-ai-owner' + (a.owner === '〔负责人待确认〕' ? ' pending' : ''), a.owner)
+    const deadline = el('span', 'meet-ai-deadline' + (a.deadline === '〔时间待确认〕' ? ' pending' : ''), a.deadline)
+    li.append(owner, deadline)
+    aUl.append(li)
+  }
+  aSec.append(aUl)
+  wrap.append(aSec)
+
+  // 三、待定问题（空则整节省略）
+  if (m.openQuestions && m.openQuestions.length) {
+    const qSec = el('section', 'meet-section')
+    qSec.append(el('h4', 'meet-sec-title', '三、待定问题'))
+    const qUl = el('ul', 'meet-list')
+    for (const q of m.openQuestions) qUl.append(el('li', 'meet-open-q', '❓ ' + q))
+    qSec.append(qUl)
+    wrap.append(qSec)
+  }
+  target.append(wrap)
+}
+
+// ===== 一键复制（严格按 prompt-会议纪要.md 第三节模板） =====
+function buildCopyText(m) {
+  const order = { high: 0, medium: 1, low: 2 }
+  const sorted = [...m.actionItems].sort((a, b) => order[a.priority] - order[b.priority])
+  const lines = []
+  lines.push(`【${m.title} 会议纪要】`)
+  lines.push(`📅 ${m.date || todayStr()}`)
+  lines.push('')
+  lines.push('一、结论')
+  m.conclusions.forEach((c, i) => lines.push(`${i + 1}. ${c}`))
+  lines.push('')
+  lines.push('二、待办')
+  for (const a of sorted) {
+    lines.push(`${a.priority === 'high' ? '🔴 ' : ''}□ ${a.task}｜${a.owner}｜${a.deadline}`)
+  }
+  if (m.openQuestions && m.openQuestions.length) {
+    lines.push('')
+    lines.push('三、待定问题')
+    for (const q of m.openQuestions) lines.push(`❓ ${q}`)
+  }
+  lines.push('')
+  lines.push('—— 由「新人上手手册」整理')
+  return lines.join('\n')
+}
+
+async function copyMeetingText(m) {
+  const text = buildCopyText(m)
+  try {
+    await navigator.clipboard.writeText(text)
+    showToast('已复制，可粘贴到群里')
+  } catch {
+    // 兜底：execCommand('copy')
+    const ta = el('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.append(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    ta.remove()
+    showToast(ok ? '已复制，可粘贴到群里' : '复制失败，请手动选择文本复制')
+  }
+}
+
+// ===== 待办同步到工作台（同标题未完成跳过） =====
+function syncMeetingTodos(m) {
+  const todos = loadTodos()
+  const now = Date.now()
+  let added = 0
+  let skipped = 0
+  for (const a of m.actionItems) {
+    const task = (a.task || '').trim()
+    if (!task) continue
+    if (todos.some((t) => t.title === task && !t.done)) {
+      skipped++
+      continue
+    }
+    let due = null
+    if (a.deadline && /^\d{4}-\d{2}-\d{2}$/.test(a.deadline) && !isNaN(new Date(a.deadline).getTime())) {
+      due = a.deadline
+    }
+    todos.unshift({
+      id: 't' + now + '-' + added,
+      title: task,
+      dueDate: due,
+      priority: a.priority === 'high' ? '高' : a.priority === 'medium' ? '中' : '低',
+      note: `来自纪要：${m.title}`,
+      done: false,
+      createdAt: now,
+      doneAt: null,
+    })
+    added++
+  }
+  if (!added && !skipped) {
+    showToast('没有可同步的待办')
+    return
+  }
+  saveTodos(todos)
+  logActivity('meeting-sync', `从纪要同步 ${added} 条待办`)
+  showToast(`已同步 ${added} 条，跳过重复 ${skipped} 条`)
+  refreshDashboard()
+}
+
+// ===== 最近纪要（展开复用结果渲染，可删除） =====
+function renderMeetHistory() {
+  const list = loadMeetings()
+  meetHistoryListEl.innerHTML = ''
+  meetHistoryEmptyEl.hidden = list.length > 0
+  for (const m of list) {
+    const li = el('li', 'meet-history-item')
+    const row = el('div', 'meet-history-row')
+    const info = el('div', 'meet-history-info')
+    info.append(
+      el('div', 'meet-history-title', m.title),
+      el('div', 'meet-history-meta', `${m.date || ''} · ${(m.actionItems || []).length} 条待办`),
+    )
+    const delBtn = el('button', 'meet-history-del', '删除')
+    delBtn.type = 'button'
+    let armed = false
+    let timer = null
+    delBtn.addEventListener('click', () => {
+      if (!armed) {
+        armed = true
+        delBtn.textContent = '确认删除？'
+        timer = setTimeout(() => {
+          armed = false
+          delBtn.textContent = '删除'
+        }, 2500)
+        return
+      }
+      clearTimeout(timer)
+      const next = loadMeetings().filter((x) => x.id !== m.id)
+      saveMeetings(next)
+      logActivity('meeting-del', `删除纪要：${m.title}`)
+      renderMeetHistory()
+    })
+    row.append(info, delBtn)
+    row.addEventListener('click', (e) => {
+      if (e.target === delBtn) return
+      const detail = li.querySelector('.meet-history-detail')
+      const open = li.classList.toggle('open')
+      detail.classList.toggle('open', open)
+      if (open && !detail.firstChild) {
+        renderMeetingResult(m, detail)
+      }
+    })
+    const detail = el('div', 'meet-history-detail')
+    li.append(row, detail)
+    meetHistoryListEl.append(li)
+  }
+}
+
+// ===== Toast =====
+let toastTimer = null
+function showToast(msg) {
+  let t = document.querySelector('.meet-toast')
+  if (!t) {
+    t = el('div', 'meet-toast')
+    document.body.append(t)
+  }
+  t.textContent = msg
+  t.classList.add('show')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2600)
+}
+
+// ===== 任务 B：录音转写（本地解码 + DashScope WebSocket 推流） =====
+meetAudioBtnEl.addEventListener('click', () => meetAudioFileEl.click())
+meetAudioFileEl.addEventListener('change', (e) => {
+  const file = e.target.files[0]
+  e.target.value = ''
+  if (!file) return
+  handleAudioFile(file)
+})
+
+async function handleAudioFile(file) {
+  if (!/\.(mp3|wav|m4a)$/i.test(file.name)) {
+    renderMeetStatus('error', '只支持 mp3 / wav / m4a 录音文件')
+    return
+  }
+  if (file.size > 50 * 1024 * 1024) {
+    renderMeetStatus('error', '录音文件不能超过 50MB')
+    return
+  }
+  const asrKey = import.meta.env.VITE_DASHSCOPE_API_KEY || ''
+  if (!asrKey) {
+    renderMeetStatus('error', '还没配置 DashScope API Key（.env 里的 VITE_DASHSCOPE_API_KEY）')
+    return
+  }
+  showMeetProgress('上传中…')
+  try {
+    const buf = await file.arrayBuffer()
+    showMeetProgress('解码中…')
+    const Ctx = window.AudioContext || window.webkitAudioContext
+    const ctx = new Ctx()
+    let audioBuf
+    try {
+      audioBuf = await ctx.decodeAudioData(buf.slice(0))
+    } catch {
+      throw new Error('音频解码失败，请换一个文件试试')
+    }
+    ctx.close()
+    const duration = audioBuf.duration
+    showMeetProgress(`转写中（已 0 秒）`)
+    const pcm = resampleToPCM16(audioBuf, 16000)
+    const text = await dashscopeTranscribe(pcm, (secs) => {
+      showMeetProgress(
+        duration > 30
+          ? `录音约 ${Math.round(duration / 60)} 分钟，预计耗时约 ${Math.max(10, Math.round(duration * 1.2))} 秒 · 转写中（已 ${secs} 秒）`
+          : `转写中（已 ${secs} 秒）`,
+      )
+    })
+    if (!text.trim()) throw new Error('没识别出文字，请确认录音里有清晰的人声')
+    meetInputEl.value = text.trim()
+    meetFileNameEl.textContent = `${file.name}（转写）`
+    meetFileRowEl.hidden = false
+    renderMeetStatus('success', '转写完成，可修改后点「提炼纪要」')
+  } catch (err) {
+    renderMeetStatus('error', err.message || '转写失败')
+  } finally {
+    hideMeetProgress()
+  }
+}
+
+// 多声道混合 + 线性重采样为 16kHz 单声道 PCM16
+function resampleToPCM16(audioBuf, targetRate) {
+  const srcRate = audioBuf.sampleRate
+  const channels = audioBuf.numberOfChannels
+  const outLen = Math.round((audioBuf.length * targetRate) / srcRate)
+  const out = new Int16Array(outLen)
+  const ratio = srcRate / targetRate
+  for (let i = 0; i < outLen; i++) {
+    const srcIdx = Math.floor(i * ratio)
+    let sum = 0
+    for (let c = 0; c < channels; c++) sum += audioBuf.getChannelData(c)[srcIdx]
+    const v = Math.max(-1, Math.min(1, sum / channels))
+    out[i] = v < 0 ? v * 0x8000 : v * 0x7fff
+  }
+  return out.buffer
+}
+
+// DashScope paraformer-realtime-v2：WebSocket 分片推流识别
+// 浏览器 WebSocket 无法携带自定义 Header，鉴权通过 query 参数 token 传递
+function dashscopeTranscribe(pcmBuffer, onTick) {
+  return new Promise((resolve, reject) => {
+    const key = import.meta.env.VITE_DASHSCOPE_API_KEY || ''
+    const wsUrl = `wss://dashscope.aliyuncs.com/api-ws/v1/inference?token=${encodeURIComponent(key)}`
+    const ws = new WebSocket(wsUrl)
+    const taskId = 'asr-' + Date.now()
+    let fullText = ''
+    let partial = ''
+    let finished = false
+    let settled = false
+    const startTime = Date.now()
+    const ticker = setInterval(() => {
+      if (onTick) onTick(Math.floor((Date.now() - startTime) / 1000))
+    }, 1000)
+    const watchdog = setTimeout(() => {
+      if (settled) return
+      settled = true
+      clearInterval(ticker)
+      try {
+        ws.close()
+      } catch {}
+      reject(new Error('转写超时，请重试或换更短的录音'))
+    }, 300000)
+
+    const settle = (fn, val) => {
+      if (settled) return
+      settled = true
+      clearInterval(ticker)
+      clearTimeout(watchdog)
+      fn(val)
+    }
+
+    ws.onopen = () => {
+      ws.send(
+        JSON.stringify({
+          header: { action: 'run-task', task_id: taskId, streaming: 'duplex', task_group: 'audio' },
+          payload: {
+            task: 'paraformer-realtime-v2',
+            function: 'recognition',
+            parameters: {
+              format: 'pcm',
+              sample_rate: 16000,
+              semantic_punctuation: true,
+              disfluency_removal_enabled: false,
+              incremental_output: true,
+              max_sentence_silence: 800,
+              language_hints: ['zh'],
+            },
+            input: {},
+          },
+        }),
+      )
+      // 100ms 一帧（16kHz 16bit 单声道 = 3200 字节），依序推流
+      const frame = 3200
+      let off = 0
+      const pushNext = () => {
+        if (settled) return
+        if (off >= pcmBuffer.byteLength) {
+          ws.send(JSON.stringify({ header: { action: 'finish-task', task_id: taskId }, payload: {} }))
+          return
+        }
+        const end = Math.min(off + frame, pcmBuffer.byteLength)
+        ws.send(pcmBuffer.slice(off, end))
+        off = end
+        setTimeout(pushNext, 90)
+      }
+      pushNext()
+    }
+
+    ws.onmessage = (ev) => {
+      if (typeof ev.data !== 'string') return
+      let msg
+      try {
+        msg = JSON.parse(ev.data)
+      } catch {
+        return
+      }
+      const action = msg.header?.action || ''
+      if (action === 'task-failed') {
+        const code = msg.header?.code || msg.header?.status_code || ''
+        const reason = msg.header?.message || msg.header?.status_text || code || '未知错误'
+        settle(reject, new Error(`转写服务报错：${reason}`))
+        return
+      }
+      if (action === 'task-finished') {
+        if (partial) fullText += partial
+        finished = true
+        settle(() => {
+          try {
+            ws.close()
+          } catch {}
+          resolve(fullText.trim())
+        })
+        return
+      }
+      if (action === 'result' || msg.payload?.output) {
+        const out = msg.payload?.output
+        if (out?.sentence) {
+          const t = out.sentence.text || ''
+          if (out.sentence.sentence_end === true) {
+            fullText += t
+            partial = ''
+          } else {
+            partial = t
+          }
+        } else if (out?.text) {
+          partial = out.text
+        }
+      }
+    }
+
+    ws.onerror = () => settle(reject, new Error('转写服务连接失败，请稍后重试'))
+    ws.onclose = () => {
+      if (!settled) settle(reject, finished ? null : new Error('转写连接中断'))
+      // finished 情况下 onclose 由 task-finished 流程关闭触发，settle 已处理
+    }
+  })
+}
+
+// 降级开关（实测后由外部决定调用）
+function setAsrDowngraded(v) {
+  ASR_DOWNGRADED = v
+  const tab = $('meet-audio-tab')
+  if (v) {
+    tab.disabled = true
+    tab.title = '录音转写即将上线，可先粘贴文字或上传文档'
+  } else {
+    tab.disabled = false
+    tab.title = ''
+  }
+}
+
+// ===== 事件绑定与初始化 =====
+meetExtractBtnEl.addEventListener('click', extractMeeting)
+setAsrDowngraded(ASR_DOWNGRADED)
+renderMeetHistory()

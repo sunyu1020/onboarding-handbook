@@ -217,10 +217,50 @@
         </div>
       </section>
 
-      <!-- 第 5 屏：会议纪要（占位） -->
-      <section id="screen-5" class="screen placeholder-screen">
-        <h2>第 5 屏 · 会议纪要</h2>
-        <p>上传文档或录音，AI 提炼最终结论、待办、负责人与截止时间（待开发）</p>
+      <!-- 第 5 屏：会议纪要 -->
+      <section id="screen-5" class="screen">
+        <div class="meet-wrap">
+          <header class="meet-header">
+            <h2 class="meet-title">会议纪要</h2>
+            <p class="meet-sub">粘贴文本、上传文档或录音，AI 提炼结论、待办、负责人与截止时间</p>
+          </header>
+
+          <section class="meet-card">
+            <div class="meet-input-tabs" id="meet-input-tabs">
+              <button class="meet-input-tab active" data-mode="text" type="button">粘贴文本</button>
+              <button class="meet-input-tab" data-mode="doc" type="button">上传文档</button>
+              <button class="meet-input-tab" data-mode="audio" type="button" id="meet-audio-tab">上传录音</button>
+            </div>
+            <div class="meet-file-row" id="meet-file-row" hidden>
+              <span class="meet-file-name" id="meet-file-name"></span>
+              <button id="meet-file-clear" class="meet-file-clear" type="button" aria-label="清除文件">×</button>
+            </div>
+            <textarea
+              id="meet-input"
+              class="meet-textarea"
+              placeholder="粘贴会议记录原文……"
+            ></textarea>
+            <div class="meet-actions">
+              <button id="meet-doc-btn" class="dash-ghost-btn" type="button" hidden>选择文档（txt / docx / pdf）</button>
+              <button id="meet-audio-btn" class="dash-ghost-btn" type="button" hidden>选择录音文件（mp3 / wav / m4a）</button>
+              <button id="meet-extract-btn" class="btn-primary">提炼纪要</button>
+            </div>
+            <input id="meet-doc-file" type="file" accept=".txt,.docx,.pdf" hidden />
+            <input id="meet-audio-file" type="file" accept=".mp3,.wav,.m4a,audio/*" hidden />
+            <div id="meet-progress" class="meet-progress" hidden></div>
+            <div id="meet-status"></div>
+          </section>
+
+          <section id="meet-result"></section>
+
+          <section class="meet-card">
+            <div class="meet-card-head">
+              <h3>最近纪要</h3>
+            </div>
+            <ul id="meet-history-list" class="meet-history-list"></ul>
+            <div id="meet-history-empty" class="meet-empty" hidden>还没有提炼过的纪要</div>
+          </section>
+        </div>
       </section>
 
       <!-- 第 6 屏：周报与向上汇报（占位） -->
