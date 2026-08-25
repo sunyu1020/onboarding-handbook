@@ -9,10 +9,20 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^5.2.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
     "vite": "^7.0.0"
   },
   "dependencies": {
+    "framer-motion": "^13.1.1",
+    "lucide-react": "^1.34.0",
     "mammoth": "^1.12.1",
-    "pdfjs-dist": "^6.2.108"
+    "pdfjs-dist": "^6.2.108",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   }
 }

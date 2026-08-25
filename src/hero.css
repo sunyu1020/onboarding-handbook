@@ -1,0 +1,17 @@
+/* ============================================================
+   开挂室 React Hero 专用样式
+   - 仅引入 Tailwind 的 theme + utilities（跳过 preflight），
+     避免影响现有 92KB 原生 CSS 的默认样式
+   - 通过 @theme 注入 shadcn 风格的 --color-primary 令牌
+   ============================================================ */
+@import "tailwindcss/theme.css";
+@import "tailwindcss/utilities.css";
+
+@theme {
+  --color-primary: #e1e0cc;
+}
+
+/* 噪点叠层（组件 .noise-overlay 使用） */
+.noise-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
