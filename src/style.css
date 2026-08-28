@@ -8132,13 +8132,18 @@ a:hover {
    移动端性能与流畅度优化
    ============================================================ */
 
-/* 1. 提升固定/悬浮元素的合成层，避免滚动时重绘 */
+/* 1. 提升固定/悬浮元素的合成层，避免滚动时重绘。
+   注意：#fav-drawer 本身靠 transform: translateX(100%) 隐藏在屏外，不能在这里写死 transform，
+   否则会把隐藏状态覆盖成 translateZ(0)，导致抽屉默认展开且关不掉。 */
 .top-nav,
-#fav-drawer,
 #fav-drawer-mask,
 .dash-cal-pop {
   will-change: transform;
   transform: translateZ(0);
+}
+
+#fav-drawer {
+  will-change: transform; /* 仅给 will-change 提示，不覆盖 translateX 隐藏态 */
 }
 
 /* 2. 移动端移除点击高亮、加快交互响应 */
