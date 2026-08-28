@@ -4822,9 +4822,54 @@ function formatJdChatText(text) {
   return text.replace(/([^\n])(\d+\.\s)/g, '$1\n$2')
 }
 
+// 演示模式：岗位追问的预置回答（与快捷按钮文案一一对应，也兼容任意输入）
+function demoSendJdChat(question) {
+  const q = question || jdChatInputEl.value
+  const job = jdLastJobName || '目标岗位'
+  const answers = {
+    '这个岗位面试会问什么': `面试通常围绕三类问题展开：\n1. 业务理解：你会怎么分析这个产品的用户路径？当前核心指标是什么？\n2. 项目深挖：请讲一个你主导/参与过的项目，重点问「为什么这么做」「如果重来会怎么改」。\n3. 岗位匹配：你认为自己最适合这个岗位的 3 个特质是什么？\n\n建议：提前准备一个 3 分钟的项目故事，用 STAR 结构，数据收尾。`,
+    '第一个月最重要的是什么': `${job} 入职第一个月，建议把 80% 精力放在「搞清楚人和事」：\n1. 第 1 周：约直属领导、mentor、核心协作方做 1:1，问清楚团队目标、考核口径、当前最大卡点。\n2. 第 2 周：读完核心文档（PRD、数据看板、历史复盘），整理一份「新人 10 问」。\n3. 第 3-4 周：主动承接 1 个能快速交付的小任务，先赢一次，建立信任。\n\n记住：第一个月不急着证明自己多强，先证明自己「靠谱、好协作」。`,
+    '这份 JD 有哪些坑': `JD 里常见的 3 个「坑」需要警惕：\n1. 「负责全流程」可能是资源不足、边界模糊，入职后容易变成打杂。\n2. 「抗压能力强」「接受适度加班」往往意味着节奏快、KPI 紧，要问清具体工作时长。\n3. 「有机会接触 XX 核心业务」如果不在岗位职责前几条，可能只是边缘支持。\n\n建议：面试时把 JD 里模糊的动词变成具体的问题，比如「全流程」到底包含哪些评审节点、向谁汇报。`,
+  }
+  const answer =
+    answers[q] ||
+    `这个问题问得很好。针对「${job}」，我给你 3 个思考角度：\n1. 从岗位目标出发：这个岗位存在的核心 value 是什么？\n2. 从团队缺口出发：当前团队最缺的能力/资源是什么？\n3. 从个人成长出发：这个经历能补你哪块履历短板？\n\n如果你把具体 JD 或面试问题贴出来，我可以给更针对性的建议。`
+
+  jdChatMessages.push({ role: 'user', content: q })
+  appendJdMsg('user', q)
+  jdChatInputEl.value = ''
+  const aiMsg = appendJdMsg('ai', '')
+  jdChatBusy = true
+  jdChatSendEl.disabled = true
+  jdChatSendEl.textContent = '回答中…'
+
+  let pos = 0
+  const full = formatJdChatText(answer)
+  const chunk = Math.max(2, Math.floor(full.length / 24))
+  const timer = window.setInterval(() => {
+    pos = Math.min(full.length, pos + chunk)
+    aiMsg.textContent = full.slice(0, pos)
+    jdChatBoxEl.scrollTop = jdChatBoxEl.scrollHeight
+    if (pos >= full.length) {
+      window.clearInterval(timer)
+      jdChatMessages.push({ role: 'assistant', content: full })
+      jdChatLastPair = { question: q, answer: full }
+      jdChatMetaEl.hidden = false
+      jdChatBusy = false
+      jdChatSendEl.disabled = false
+      jdChatSendEl.textContent = '发送'
+      logActivity('demo-jd-chat', '演示模式岗位追问：' + q.slice(0, 30))
+    }
+  }, 35)
+}
+
 async function sendJdChat(question) {
   const q = (question || jdChatInputEl.value).trim()
   if (!q || jdChatBusy) return
+  if (DEMO_MODE) {
+    demoSendJdChat(q)
+    return
+  }
   jdChatMessages.push({ role: 'user', content: q })
   appendJdMsg('user', q)
   jdChatInputEl.value = ''
