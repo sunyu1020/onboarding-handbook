@@ -4844,7 +4844,7 @@ function demoSendJdChat(question) {
   jdChatSendEl.textContent = '回答中…'
 
   let pos = 0
-  const full = formatJdChatText(answer)
+  const full = formatJdChatText('【演示模式 · 预置回答】\n\n' + answer)
   const chunk = Math.max(2, Math.floor(full.length / 24))
   const timer = window.setInterval(() => {
     pos = Math.min(full.length, pos + chunk)

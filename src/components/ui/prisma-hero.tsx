@@ -88,6 +88,12 @@ const PrismaHero = () => {
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const [videoReady, setVideoReady] = useState(false)
+  const [posterFailed, setPosterFailed] = useState(false)
+
+  // 带 cache-busting 的资源路径，强制微信/浏览器刷新缓存
+  const BASE_URL = import.meta.env.BASE_URL
+  const POSTER_URL = `${BASE_URL}hero-poster.png?v=2`
+  const VIDEO_URL = `${BASE_URL}hero-bg.mp4?v=2`
 
   useEffect(() => {
     const v = videoRef.current
@@ -141,24 +147,32 @@ const PrismaHero = () => {
     <section id="screen-1" className="screen prisma-hero-screen h-screen w-full">
       <div className="relative h-full w-full overflow-hidden rounded-2xl md:rounded-[2rem]">
 
-        {/* 备用背景层：用 <img> 而非 CSS background-image，微信/移动端更可靠。
-            视频成功播放后淡入盖住它；失败或未就绪时始终显示海报，首屏绝不黑屏。 */}
-        <div className="absolute inset-0 z-0 bg-[#050505]">
-          <img
-            src={`${import.meta.env.BASE_URL}hero-poster.png`}
-            alt=""
-            className="h-full w-full object-cover"
-            style={{ opacity: 0.9 }}
-          />
+        {/* 第 0 层：CSS background-image，最可靠兜底，永不消失。
+            即使 <img> 加载失败、JS 报错、网络中断，这层背景始终存在，首屏绝不黑屏。 */}
+        <div
+          className="absolute inset-0 z-0 bg-[#050505]"
+          style={{
+            backgroundImage: `url("${POSTER_URL}")`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+          }}
+        >
           <div
             className="absolute inset-0"
-            style={{
-              background: 'linear-gradient(rgba(5,5,5,0.32), rgba(5,5,5,0.58))',
-            }}
+            style={{ background: 'linear-gradient(rgba(5,5,5,0.32), rgba(5,5,5,0.58))' }}
           />
         </div>
 
-        {/* Background video：默认隐藏，真正开始播放后再淡入；失败/未就绪时保持海报可见 */}
+        {/* 第 1 层：<img> 高清海报，加载成功则盖在 CSS 背景之上，失败时透明但不消失（不会露出黑底）。 */}
+        <img
+          src={POSTER_URL}
+          alt=""
+          className={`absolute inset-0 z-[1] h-full w-full object-cover transition-opacity duration-700 ${posterFailed ? 'opacity-0' : 'opacity-100'}`}
+          onError={() => setPosterFailed(true)}
+        />
+
+        {/* 第 2 层：视频，真正开始播放后再淡入盖住海报 */}
         <video
           ref={videoRef}
           autoPlay
@@ -166,9 +180,9 @@ const PrismaHero = () => {
           muted
           playsInline
           preload="auto"
-          poster={`${import.meta.env.BASE_URL}hero-poster.png`}
-          className={`absolute inset-0 z-[1] h-full w-full object-cover transition-opacity duration-700 ${videoReady ? 'opacity-100' : 'opacity-0'}`}
-          src={`${import.meta.env.BASE_URL}hero-bg.mp4`}
+          poster={POSTER_URL}
+          className={`absolute inset-0 z-[2] h-full w-full object-cover transition-opacity duration-700 ${videoReady ? 'opacity-100' : 'opacity-0'}`}
+          src={VIDEO_URL}
         />
 
         {/* Noise overlay */}
