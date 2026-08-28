@@ -21,8 +21,12 @@
 
 ### 第 1 屏：开场（已 React 化）
 - 已重做为「登陆岛」Hero：`src/hero-react.tsx` 挂载 `PrismaHero`（`src/components/ui/prisma-hero.tsx`）到 `#prisma-hero-root`，h-screen 撑满
-- 大标题「登陆岛」+ slogan「不漂流，来登陆」/「把陌生的海域走成自己的岛」
+- 大标题「把陌生的海域走成自己的岛」+ slogan「嘿，别茫了，一起上岛看看！」+「登岛」按钮（跳转岗位拆解屏）
 - 字体：Press Start 2P + Noto Sans SC（Google Fonts）
+- **背景视频（v3 已上线，桌面/移动端一致）**：同源 `public/hero-bg.mp4`（1080p H.264，1.24MB，faststart，无音轨）自动播放（muted + playsInline + canplay 重试 + 首次交互 replay）
+- **四层兜底策略（任何情况不黑屏）**：第 0 层 CSS 渐变纹理（零资源依赖）→ 第 1 层 CSS background-image（webp 失败自动落 png）→ 第 2 层 `<img>` 高清海报（onError 自动切 PNG）→ 第 3 层 video（**播放后淡入**，未就绪时保持海报可见）
+- 海报主用 `hero-poster.webp`（22KB，弱网/微信友好），`hero-poster.png`（1.4MB）仅作 fallback；资源 URL 带 `?v=2` cache-busting，防微信缓存旧图
+- **教训（勿回退）**：视频默认显示/失败后淡出的方案会在移动端产生"先黑屏再切海报"，必须保持"播放后淡入"的顺序
 
 ### 第 2 屏：今日工作台
 - 按访问时段显示问候语（早上好/下午好/晚上好），附一句与新人场景相关的问候文案
@@ -43,7 +47,8 @@
   7. interviewSecrets · 面试这个岗位时，说什么能证明你懂行
   8. keyCompetencies · 关键能力模型（由 dailyWork 与 firstMonthPitfalls 提炼出的 3~4 项核心能力）
 - JD 拆解 Agent（详见 `prompt-JD拆解Agent.md`，三个 Prompt 已逐字进 `src/prompt-jd-*.txt`）：粘贴 JD 文本 / 上传 JD 截图（GLM-4V-Flash 提字，回显可编辑）→ 首次拆解（8 字段 + jdDecoded「JD 没写的大实话」板块）→ 追问对话模式（流式打字机，3 个快捷追问按钮）
-- 生成结果支持收藏到本地岗位库（localStorage），可反复查看；预置 29 岗正方形网格 + 查看更多/收起
+- 生成结果支持收藏到本地岗位库（localStorage），可反复查看；预置 29 岗扇形轮播（可拖拽切换，hover 居中）+「查看全部」切 grid 平铺
+- **产品决策（已定案）**：岗位拆解屏**初始只显示岗位库**，不自动展开任何拆解结果；用户点击具体岗位后才执行拆解（`openPresetDecomposition`）。演示模式的自动示例拆解已移除
 - **质量要求**：输出必须像"真实工作地图"，禁止 JD 式的空话（如"负责相关工作的推进与落实"）。Prompt 已定稿（`prompt-岗位拆解.md` v2.1、`prompt-JD拆解Agent.md`），请严格使用
 
 ### 第 4 屏：项目台账
@@ -65,6 +70,7 @@
 - **分工原则**：`buildWeeklySnapshot()` 前端计算本周数据快照（完成/延期/风险/下周计划/纪要/项目），DeepSeek 只负责把快照组织成文（铁律：不许编造快照里没有的数据）
 - 「生成本周周报」：三段式（本周完成 / 延期与风险 / 下周计划），重点用数据说话；顶部统计条含本周完成度环形图；本周已有周报时按钮变「重新生成」需确认覆盖
 - 「生成向上汇报」：基于周报当前内容改写为 80~150 字适合发领导的版本；回填到同一周的 `odb_reports` 记录
+- **进入周报屏自动回填（已修复）**：hash 切到 screen-6 时 `loadSavedReportIntoEditor()` 把已存周报/向上汇报回填进编辑器并显示复制按钮（编辑器为空时才回填，不覆盖用户未保存的草稿）
 - 两个按钮都调用 DeepSeek API（纯文本输出，不走 json_object），生成结果可编辑、可复制；历史按周倒序保留 8 条
 
 ### 第 7 屏：新人开挂室（两个子标签）
@@ -82,17 +88,23 @@
 
 ## 四、技术约束
 
-- **纯前端单页应用**。技术栈已切换为：**Vite + React 19 + TypeScript + Tailwind CSS 4**（配 framer-motion、lucide-react）。原 8 屏为原生 JS 实现，正逐步迁移到 React（当前已迁移：第 1 屏 Hero + 全站浮窗导航；`src/hero-react.tsx`、`src/components/`、`src/lib/`）
-- 部署平台：GitHub Pages，**GitHub Actions 自动部署**（`.github/workflows/deploy.yml`：push main → npm ci → build → deploy）。已上线：https://sunyu1020.github.io/onboarding-handbook/
+- **纯前端单页应用**。技术栈：**Vite + React 19 + TypeScript + Tailwind CSS 4**（配 framer-motion、lucide-react）。当前为混合架构：第 1 屏 Hero + 全站浮窗导航已 React 化（`src/hero-react.tsx` 由 `src/main.js` 首行 import 挂载），其余 7 屏仍为原生 JS（`src/main.js` 约 5500 行），正逐步迁移
+- **演示模式 DEMO_MODE（已上线，核心体验保障）**：`DEMO_MODE = !API_KEY`（无 `.env` 时自动进入，线上 GitHub Pages 恒为演示模式）。演示模式下：
+  - 首屏自动播种全套示例数据（`seedDemoExperience`）：待办 5 + 项目 2 + 纪要 2 + 周报 1，登陆岗位=产品经理；只在对应存储为空时写入，**绝不覆盖用户自己产生的数据**
+  - 岗位拆解/JD 拆解/纪要/周报/向上汇报/岗位追问全部走预置回答（`demo*` 系列函数），带流式打字机效果；追问回答带「【演示模式 · 预置回答】」前缀，明确告知是演示内容
+  - 顶部显示演示横幅 + 「清空示例数据」按钮（`#onb-demo-clear`）
+  - **岗位拆解屏不自动展开示例**（产品决策：用户点击具体岗位后再拆解）
+- 部署平台：GitHub Pages，**GitHub Actions 自动部署**（`.github/workflows/deploy.yml`：push main → npm ci → build → upload-pages-artifact → deploy-pages）。已上线：https://sunyu1020.github.io/onboarding-handbook/
 - 数据全部存 localStorage，按类目独立 key，共 10 个：`odb_todos`（待办）/ `odb_activities`（动态）/ `odb_projects`（台账）/ `odb_meetings`（纪要）/ `odb_reports`（周报）/ `odb_book_status`（书单状态）/ `odb_dilemma_fav`（困境收藏）/ `odb_book_notes`（读书笔记）/ `job_library`（AI 岗位收藏）/ `preset_favorites`（预置收藏）。第 8 屏支持一键导出/导入/清空
 - 内容配置化：岗位库、书单、困境库全部放独立 JSON 文件（`data/jobs.json`、`data/books.json`、`data/dilemmas.json`），改内容不需要改代码；JSON 数据文件为只读配置，用户状态一律写 localStorage
+- 静态资源（`public/`）：`hero-bg.mp4`（1.24MB 同源视频）、`hero-poster.webp`（22KB 主海报）、`hero-poster.png`（1.4MB fallback）；URL 带 `?v=2` 版本号做 cache-busting，**更新这些资源时必须递增版本号**（微信缓存极重）
 - AI 调用，三个服务均已定案，不再评估替代方案：
   1. **DeepSeek**（deepseek-chat）：主力模型——岗位拆解、JD 拆解与追问、纪要提炼、周报/向上汇报生成
   2. **智谱 GLM-4V-Flash**（免费）：JD 截图提字，Prompt 见 `prompt-JD拆解Agent.md`
   3. **阿里百炼 DashScope ASR**（paraformer-realtime-v2 实时 WS 流式识别）：会议录音转写，方案见 `prompt-会议纪要.md`
 - 所有 API Key 通过 `.env` 文件读取（模板见 `.env.example`），`.env` 必须写进 `.gitignore`（已配置）。前端直连即可（作品集 demo 场景，key 暴露风险已知；**站点已公网部署，key 会出现在线上 bundle 中，建议上线后轮换 key**）
 - 深浅色模式切换，偏好持久化，默认跟随系统（配色预览为临时控件，URL 带 `?theme=1` 唤出，定稿后整体删除）
-- 完美适配移动端（媒体查询 + 触摸友好的点击区域）
+- 完美适配移动端（媒体查询 + 触摸友好的点击区域）；移动端专项已做：收藏抽屉关闭修复、首屏视频/海报四层兜底、性能优化（will-change 替代 translateZ 强制图层）
 
 ## 五、视觉与文案基调
 
@@ -124,13 +136,17 @@
 - [x] 阶段 4：AI 服务接入 —— 已完成（DeepSeek 岗位拆解/JD 拆解与追问/纪要/周报 ✅、DashScope paraformer-realtime-v2 实时录音转写实测打通 ✅、智谱 GLM-4V-Flash 截图提字 ✅）
 - [x] P0 收尾轮 —— 已完成（配色预览隐藏 ?theme=1 唤出 / favicon+OG 元信息 / 数据导出导入清空 / 空态统一组件 / 移动端功能性走查）
 - [x] 正式发布 —— 已上线 GitHub Pages（GitHub Actions 自动部署）：https://sunyu1020.github.io/onboarding-handbook/
+- [x] 演示模式 —— 已上线（无 Key 完整体验：自动播种示例数据 + 全部 AI 功能预置回答 + 清空示例出口；岗位拆解屏不自动展开，点击岗位后再拆解）
+- [x] 移动端适配专项 —— 已完成（首屏同源视频 + webp 海报四层兜底不黑屏、收藏抽屉修复、视频播放后淡入策略）
 - [ ] 阶段 5：样式阶段 —— 进行中（产品已更名「登陆岛」、技术栈切换 React+Tailwind+TS；第 1 屏 Hero 与全站浮窗导航已 React 化，其余 7 屏样式待做；配色预览定稿后删除；og:image 分享图待出）
+- [ ] 阶段 6：架构迁移（长期）—— 其余 7 屏从原生 JS（`src/main.js` ~5500 行）迁移到 React 组件；迁移时注意保留演示模式分支与 localStorage 语义
 
 > 遗留项（人工任务，AI 不可代劳）：
 > 1. 岗位库 9 个 AI 初稿岗位待行内人校验（优先：银行柜员、教师、审计），hr-specialist 素材来源待确认
 > 2. `test_prompt.py` 待填入真实 DeepSeek key 跑回归测试
 > 3. 找 2-3 位行内人盲测岗位拆解 Prompt 输出质量
 > 4. 站点已公网部署，API key 会出现在线上 bundle 中——建议尽快去三个平台轮换 key
-> 5. CLAUDE.md 视觉与文案基调章节（五）已定稿为「奶油毛玻璃」规范（深底 + 单一奶油强调色 #E1E0CC，删除三套霓虹临时主题）——本遗留项已闭环。
+> 5. CLAUDE.md 视觉与文案基调章节（五）已定稿为「奶油毛玻璃」规范——已闭环
+> 6. 用户使用数据收集方案待定（当前纯 localStorage 无后端；候选：第三方统计 / 自建埋点 / 导出回传）
 
 > 每完成一个阶段，请提醒我更新本节打勾，并把新决策补充进对应章节。
