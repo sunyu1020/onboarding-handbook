@@ -92,27 +92,39 @@ const PrismaHero = () => {
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
-    // 移动端/微信内置浏览器常拦截 autoplay，主动尝试播放一次
+
+    // 务必在调用 play 前显式静音，部分浏览器据此放行自动播放
     const tryPlay = () => {
+      v.muted = true
       const p = v.play()
       if (p && typeof p.catch === 'function') {
-        p.catch(() => {
-          // 被浏览器策略阻止时，备用背景已在 DOM 下层兜底
-        })
+        // 播放成功则显示视频，失败则保持海报兜底
+        p.then(() => setVideoFailed(false)).catch(() => {})
       }
     }
+
     tryPlay()
     v.addEventListener('canplay', tryPlay)
     const onError = () => setVideoFailed(true)
     v.addEventListener('error', onError)
-    // 若 4 秒内仍未开始播放（常见于弱网/微信拦截），主动隐藏 video，露出备用背景
+    // 若约 3.5 秒内仍未开始播放（弱网/微信拦截自动播放），淡出 video 露出底层海报
     const failTimer = window.setTimeout(() => {
-      if (v.readyState < 3 && v.currentTime <= 0) setVideoFailed(true)
-    }, 4000)
+      if (v.paused && v.currentTime <= 0.1) setVideoFailed(true)
+    }, 3500)
+
+    // 首次用户交互（触摸/点击）时再尝试一次播放——绕开移动端自动播放限制
+    const onFirstInteract = () => {
+      if (v.paused) tryPlay()
+    }
+    window.addEventListener('touchstart', onFirstInteract, { once: true, passive: true })
+    window.addEventListener('click', onFirstInteract, { once: true })
+
     return () => {
       window.clearTimeout(failTimer)
       v.removeEventListener('canplay', tryPlay)
       v.removeEventListener('error', onError)
+      window.removeEventListener('touchstart', onFirstInteract)
+      window.removeEventListener('click', onFirstInteract)
     }
   }, [])
 
@@ -120,21 +132,21 @@ const PrismaHero = () => {
     <section id="screen-1" className="screen prisma-hero-screen h-screen w-full">
       <div className="relative h-full w-full overflow-hidden rounded-2xl md:rounded-[2rem]">
 
-        {/* 备用背景层：在视频无法加载/自动播放被拦截时兜底，移动端始终可见背景 */}
+        {/* 备用背景层：以 AI 生成的海报图作为可靠背景（兼容移动端/无网/自动播放被拦截）。
+            视频成功播放时会盖在它之上；失败时淡出 video，露出这层海报，永远不会是黑屏。 */}
         <div
           className="absolute inset-0 z-0"
           style={{
             backgroundColor: '#050505',
             backgroundImage:
-              'radial-gradient(circle at 70% 30%, rgba(225,224,204,0.12) 0%, transparent 45%), ' +
-              'radial-gradient(circle at 30% 80%, rgba(225,224,204,0.08) 0%, transparent 40%), ' +
-              'linear-gradient(rgba(225,224,204,0.03) 1px, transparent 1px), ' +
-              'linear-gradient(90deg, rgba(225,224,204,0.03) 1px, transparent 1px)',
-            backgroundSize: '100% 100%, 100% 100%, 4px 4px, 4px 4px',
+              `linear-gradient(rgba(5,5,5,0.32), rgba(5,5,5,0.58)), url("${import.meta.env.BASE_URL}hero-poster.png")`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
           }}
         />
 
-        {/* Background video：加载失败或播放失败时透明降级，露出下方备用背景 */}
+        {/* Background video：加载失败或播放失败时透明降级，露出下方海报背景 */}
         <video
           ref={videoRef}
           autoPlay
@@ -142,9 +154,9 @@ const PrismaHero = () => {
           muted
           playsInline
           preload="auto"
-          poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23050505'/%3E%3C/svg%3E"
+          poster={`${import.meta.env.BASE_URL}hero-poster.png`}
           className={`absolute inset-0 z-[1] h-full w-full object-cover transition-opacity duration-700 ${videoFailed ? 'opacity-0' : 'opacity-100'}`}
-          src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260405_170732_8a9ccda6-5cff-4628-b164-059c500a2b41.mp4"
+          src={`${import.meta.env.BASE_URL}hero-bg.mp4`}
         />
 
         {/* Noise overlay */}
