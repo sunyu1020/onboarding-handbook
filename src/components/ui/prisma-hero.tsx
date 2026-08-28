@@ -81,17 +81,13 @@ export const WordsPullUpMultiStyle = ({ segments, className = "", style }: Words
 /* ---------------- Hero ---------------- */
 
 const PrismaHero = () => {
-  const scrollToId = (id: string) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    // 直接滚到目标屏的真实顶部，让上一屏（hero）完全离开视口，避免底部残留
-    const rect = el.getBoundingClientRect();
-    const targetY = rect.top + window.scrollY;
-    window.scrollTo({ top: targetY, behavior: "smooth" });
-  };
+  // 「登岛」进入 App 视图并定位到岗位拆解屏
+  const enterApp = () => {
+    window.location.hash = '#screen-3'
+  }
 
   return (
-    <section className="h-screen w-full">
+    <section id="screen-1" className="screen prisma-hero-screen h-screen w-full">
       <div className="relative h-full w-full overflow-hidden rounded-2xl md:rounded-[2rem]">
         
         {/* Background video */}
@@ -110,45 +106,59 @@ const PrismaHero = () => {
         {/* Gradient overlay：底部渐隐为纯黑，与下方 screen-2 的纯黑背景无缝衔接，无可见边界 */}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black" />
 
+        {/* 左上角品牌名：DengluDao，米白色，18px */}
+        <div className="absolute left-4 top-4 z-20 sm:left-6 sm:top-6 md:left-10 md:top-10">
+          <span
+            className="text-[18px] font-bold tracking-[0.14em]"
+            style={{ color: "rgba(225, 224, 204, 0.95)", fontFamily: "Inter, sans-serif" }}
+          >
+            DengluDao
+          </span>
+        </div>
+
+        {/* 屏幕居中主标语 */}
+        <div
+          className="pointer-events-none absolute left-1/2 top-1/2 z-20 w-full -translate-x-1/2 -translate-y-1/2 px-4 text-center"
+        >
+          <motion.p
+            initial={{ y: 24, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.9, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            className="text-[40px] font-semibold leading-tight sm:text-[56px] md:text-[80px]"
+            style={{ color: "rgba(225, 224, 204, 0.95)", textShadow: "0 6px 32px rgba(0,0,0,0.5)" }}
+          >
+            把陌生的海域走成自己的岛
+          </motion.p>
+        </div>
+
         {/* 全站导航已抽到 FloatingNav 组件（独立于 hero，可拖拽 / 锁定） */}
 
-        {/* Hero content */}
+        {/* Hero content：slogan + 登岛按钮水平居中 */}
         <div className="absolute bottom-0 left-0 right-0 px-4 pb-6 sm:px-6 sm:pb-10 md:px-10 md:pb-14 lg:pb-20">
-          <div className="grid grid-cols-12 items-end gap-4">
-            
-            <div className="col-span-12 lg:col-span-8">
-              <h1
-                className="font-medium leading-[0.85] tracking-[-0.07em] text-[26vw] sm:text-[24vw] md:text-[22vw] lg:text-[20vw] xl:text-[19vw] 2xl:text-[20vw]"
-                style={{ color: "#E1E0CC" }}
-              >
-                <WordsPullUp text="登陆岛" showAsterisk />
-              </h1>
-            </div>
+          <div className="flex flex-col items-center gap-5 pb-6 text-center lg:pb-10">
+            <motion.p
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.8, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
+              className="text-xs text-primary/70 sm:text-sm md:text-base"
+              style={{ lineHeight: 1.2 }}
+            >
+             “ 嘿，别茫了，一起上岛看看！”
+            </motion.p>
 
-            <div className="col-span-12 flex flex-col items-center gap-5 pb-6 text-center lg:col-span-4 lg:pb-10">
-              
-              <motion.p
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.8, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                className="text-xs text-primary/70 sm:text-sm md:text-base"
-                style={{ lineHeight: 1.2 }}
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.8, delay: 0.7, ease: [0.16, 1, 0.3, 1] }}
+              className="flex flex-wrap items-center justify-center gap-3"
+            >
+              <button
+                onClick={enterApp}
+                className="inline-flex items-center justify-center rounded-full border border-[#E1E0CC]/30 bg-[#E1E0CC]/15 px-10 py-2.5 text-lg font-semibold text-[rgba(225,224,204,0.7)] backdrop-blur-md transition-all hover:bg-[#E1E0CC]/25 hover:shadow-[0_8px_32px_rgba(225,224,204,0.18)] sm:px-12 sm:text-xl"
               >
-               “ 嘿，别茫了，快来登陆岛，把陌生的海域走成自己的岛。”
-              </motion.p>
-
-              <motion.button
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.8, delay: 0.7, ease: [0.16, 1, 0.3, 1] }}
-                onClick={() => scrollToId("screen-2")}
-                className="inline-flex items-center justify-center self-center rounded-full border border-white/15 bg-black/30 px-10 py-2.5 text-xl font-semibold backdrop-blur-md transition-all hover:border-white/25 hover:bg-black/45 sm:px-14 sm:py-3 sm:text-2xl"
-                style={{ color: "#E1E0CC" }}
-              >
-                登岛！
-              </motion.button>
-
-            </div>
+                登岛
+              </button>
+            </motion.div>
           </div>
         </div>
       </div>

@@ -14,120 +14,49 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700;900&family=Press+Start+2P&display=swap"
+      href="https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&family=Noto+Sans+SC:wght@400;700;900&family=Press+Start+2P&display=swap"
       rel="stylesheet"
     />
   </head>
   <body>
     <main>
       <!-- 第 1 屏：开挂室 React Hero（由 src/hero-react.tsx 挂载到 #prisma-hero-root） -->
-      <section id="screen-1" class="screen prisma-hero-screen">
-        <div id="prisma-hero-root"></div>
-      </section>
+      <!-- React 挂载点：AppShell 会在这里渲染首屏 section 与全局导航，必须放在 .screen 之外，避免 App 视图时导航被隐藏 -->
+      <div id="prisma-hero-root"></div>
 
-      <!-- 第 2 屏：今日工作台 -->
-      <section id="screen-2" class="screen">
-        <div class="dash-wrap">
-          <header class="dash-header">
-            <h2 class="dash-greeting" id="dash-greeting"></h2>
-            <p class="dash-greeting-tip" id="dash-greeting-tip"></p>
-          </header>
+      <!-- 首屏内容将由 React PrismaHero 组件注入 -->
 
-          <section class="dash-card">
-            <textarea
-              id="dash-input"
-              class="dash-textarea"
-              placeholder="粘贴你的排期、待办、聊天记录里领到的活……纯文本即可"
-            ></textarea>
-            <div class="dash-parse-actions">
-              <button id="dash-sample-btn" class="dash-ghost-btn" type="button">试一试</button>
-              <button id="dash-parse-btn" class="btn-primary">解析</button>
-            </div>
-            <div id="dash-parse-status"></div>
-            <div id="dash-confirm-list"></div>
-          </section>
+      <!-- 功能屏顶部入口条：岗位拆解 / 工作台 / 开挂室 -->
+      <div class="app-entry-bar">
+        <nav class="entry-portals" aria-label="模块快速入口">
+          <button class="entry-portal entry-portal-progress" type="button" aria-label="查看登陆进度">
+            <span class="entry-portal-progress-label">登陆进度</span>
+            <span class="onb-trunk" aria-hidden="true"><span class="onb-trunk-fill"></span></span>
+          </button>
+          <span class="entry-portal-arrow" aria-hidden="true">→</span>
+          <button class="entry-portal" type="button" data-target="screen-3">
+            <span class="entry-portal-en">JOB MAP</span>
+            <span class="entry-portal-cn">岗位拆解</span>
+          </button>
+          <span class="entry-portal-arrow" aria-hidden="true">→</span>
+          <button class="entry-portal" type="button" data-target="screen-2">
+            <span class="entry-portal-en">WORKBENCH</span>
+            <span class="entry-portal-cn">工作台</span>
+          </button>
+          <span class="entry-portal-arrow" aria-hidden="true">→</span>
+          <button class="entry-portal" type="button" data-target="screen-7">
+            <span class="entry-portal-en">GROW</span>
+            <span class="entry-portal-cn">新人开挂室</span>
+          </button>
+        </nav>
+      </div>
 
-          <section class="dash-stats">
-            <div class="dash-stat-card" id="stat-progress-card">
-              <div class="dash-stat-num" id="stat-progress-num">0</div>
-              <div class="dash-stat-label">进行中</div>
-              <div class="dash-stat-sub" id="stat-progress-sub"></div>
-            </div>
-            <div class="dash-stat-card" id="stat-todo-card">
-              <div class="dash-stat-num" id="stat-todo-num">0</div>
-              <div class="dash-stat-label">待办</div>
-              <div class="dash-stat-sub" id="stat-todo-sub"></div>
-            </div>
-            <div class="dash-stat-card" id="stat-overdue-card">
-              <div class="dash-stat-num" id="stat-overdue-num">0</div>
-              <div class="dash-stat-label">延期风险</div>
-              <div class="dash-stat-sub" id="stat-overdue-sub"></div>
-            </div>
-            <div class="dash-stat-card" id="stat-weekly-card">
-              <div class="dash-ring-wrap">
-                <svg class="dash-ring" viewBox="0 0 64 64" aria-hidden="true">
-                  <circle class="dash-ring-bg" cx="32" cy="32" r="26"></circle>
-                  <circle class="dash-ring-fg" id="dash-ring-fg" cx="32" cy="32" r="26"></circle>
-                </svg>
-                <span class="dash-ring-num" id="dash-ring-num">—</span>
-              </div>
-              <div class="dash-stat-label">本周完成度</div>
-            </div>
-          </section>
-
-          <div class="dash-row dash-row-2">
-            <section class="dash-card">
-              <div class="dash-card-head">
-                <h3>待办清单</h3>
-                <div class="dash-tabs">
-                  <button class="dash-tab active" data-filter="all" type="button">全部</button>
-                  <button class="dash-tab" data-filter="todo" type="button">未完成</button>
-                  <button class="dash-tab" data-filter="done" type="button">已完成</button>
-                </div>
-              </div>
-              <ul id="dash-todo-list" class="dash-todo-list"></ul>
-              <div id="dash-todo-empty" class="dash-empty"></div>
-            </section>
-
-            <section class="dash-card" id="dash-cal-card">
-              <div class="dash-card-head">
-                <h3>本月日历</h3>
-                <div class="dash-cal-nav">
-                  <button id="dash-cal-prev" type="button" aria-label="上月">‹</button>
-                  <span id="dash-cal-title" class="dash-cal-title"></span>
-                  <button id="dash-cal-next" type="button" aria-label="下月">›</button>
-                </div>
-              </div>
-              <div class="dash-cal-weekdays">
-                <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
-              </div>
-              <div id="dash-cal-grid" class="dash-cal-grid"></div>
-              <div id="dash-cal-pop" class="dash-cal-pop" hidden></div>
-            </section>
-          </div>
-
-          <section class="dash-card">
-            <div class="dash-card-head">
-              <h3>最近动态</h3>
-            </div>
-            <ul id="dash-act-list" class="dash-act-list"></ul>
-            <div id="dash-act-empty" class="dash-empty">
-              <div class="empty-state">
-                <span class="empty-state-icon" aria-hidden="true">🕐</span>
-                <p class="empty-state-title">暂无动态</p>
-                <p class="empty-state-hint">完成第一条待办后，这里会开始记录</p>
-              </div>
-            </div>
-          </section>
-        </div>
-      </section>
-
-      <!-- 第 3 屏：岗位拆解（v1 岗位名拆解 + v2 JD 拆解 Agent） -->
+      <!-- 第 2 屏（视觉第 2 位）：岗位拆解 -->
+      <!-- 第 3 屏（视觉第 3 位）：工作台 · 项目台账（原第 2/4 屏合并） -->
       <section id="screen-3" class="screen">
         <div id="app">
           <header class="hero">
             <h1>JOB MAP 岗位拆解</h1>
-            <p class="hero-sub">输入岗位名，AI 给你一份真实工作地图</p>
           </header>
 
           <!-- 合并后的单一入口：岗位名 / JD / 截图 共用一个输入框 -->
@@ -167,13 +96,17 @@
                 />
                 <button id="jd-chat-send" class="btn-primary" type="button">发送</button>
               </div>
+              <div class="jd-chat-meta" id="jd-chat-meta" hidden>
+                <span class="jd-chat-meta-hint">觉得这个回答有用？</span>
+                <button id="jd-chat-save-dilemma" class="dash-ghost-btn" type="button">⭐ 存为困境</button>
+                <button id="jd-chat-goto-open" class="dash-ghost-btn" type="button" hidden>去开挂室看看</button>
+              </div>
             </section>
           </div>
 
           <section class="library">
             <header class="library-head">
               <h2 class="section-title">岗位库</h2>
-              <p class="section-sub">29 个真实岗位资料 · 鼠标悬停查看视角，点击卡片进入拆解</p>
             </header>
 
             <div class="library-stage">
@@ -195,7 +128,14 @@
               </button>
             </div>
 
-            <h2 class="section-title fav-title">岗位收藏</h2>
+            <div class="fav-head">
+              <h2 class="section-title fav-title">岗位收藏</h2>
+              <div class="job-compare-actions" id="job-compare-actions" hidden>
+                <span id="job-compare-hint" class="job-compare-hint"></span>
+                <button id="job-compare-toggle" class="dash-ghost-btn" type="button">开始对比</button>
+                <button id="job-compare-exit" class="dash-ghost-btn" type="button" hidden>退出对比</button>
+              </div>
+            </div>
             <div class="section-sub" id="fav-empty">
               <div class="empty-state">
                 <span class="empty-state-icon" aria-hidden="true">⭐</span>
@@ -204,67 +144,82 @@
               </div>
             </div>
             <div class="job-grid" id="fav-grid"></div>
-            <!-- P1：岗位对比（收藏 ≥2 个时出现） -->
-            <div class="job-compare-actions" id="job-compare-actions" hidden>
-              <span id="job-compare-hint" class="job-compare-hint"></span>
-              <button id="job-compare-toggle" class="dash-ghost-btn" type="button">开始对比</button>
-              <button id="job-compare-exit" class="dash-ghost-btn" type="button" hidden>退出对比</button>
-            </div>
             <section id="job-compare-result" class="job-compare" hidden></section>
           </section>
         </div>
       </section>
 
-      <!-- 第 4 屏：项目台账 -->
-      <section id="screen-4" class="screen">
-        <div class="proj-wrap">
-          <header class="proj-header">
-            <h2 class="proj-title">项目台账</h2>
-            <p class="proj-sub">粘贴工作清单自动整理，进度、节点、风险一眼看清</p>
+      <section id="screen-2" class="screen">
+        <div class="dash-wrap">
+          <header class="dash-header">
+            <h2 class="dash-greeting" id="dash-greeting"></h2>
+            <p class="dash-greeting-tip" id="dash-greeting-tip"></p>
           </header>
 
-          <section class="proj-card">
-            <div class="proj-card-head">
-              <h3>粘贴工作清单</h3>
-              <div class="proj-head-actions">
-                <button id="proj-sample-btn" class="dash-ghost-btn" type="button">试一试</button>
-                <button id="proj-import-btn" class="dash-ghost-btn" type="button">从待办导入</button>
-              </div>
-            </div>
+          <section class="dash-card">
             <textarea
-              id="proj-input"
-              class="proj-textarea"
-              placeholder="粘贴项目清单、排期、聊天记录……AI 帮你整理成台账"
+              id="dash-input"
+              class="dash-textarea"
+              placeholder="粘贴排期、待办、项目清单、聊天记录里领到的活……AI 自动分拣成待办或台账"
             ></textarea>
-            <div class="proj-parse-actions">
-              <button id="proj-parse-btn" class="btn-primary">整理</button>
+            <div class="dash-parse-actions">
+              <button id="dash-sample-btn" class="dash-ghost-btn" type="button">试一试</button>
+              <button id="dash-parse-btn" class="btn-primary">智能解析</button>
             </div>
-            <div id="proj-parse-status"></div>
+            <div id="dash-parse-status"></div>
+            <div id="dash-confirm-list"></div>
             <div id="proj-confirm-list"></div>
+          </section>
 
-            <div id="proj-import-panel" class="proj-import-panel" hidden>
-              <div class="proj-import-head">
-                <span>选择要导入的待办（未完成）</span>
-                <button id="proj-import-close" class="proj-import-close" type="button" aria-label="关闭">×</button>
+          <section class="dash-stats" id="dash-stats"></section>
+
+          <div class="dash-row dash-row-2">
+            <section class="dash-card">
+              <div class="dash-card-head">
+                <h3>待办清单</h3>
+                <div class="dash-tabs">
+                  <button class="dash-tab active" data-filter="all" type="button">全部</button>
+                  <button class="dash-tab" data-filter="todo" type="button">未完成</button>
+                  <button class="dash-tab" data-filter="done" type="button">已完成</button>
+                </div>
               </div>
-              <ul id="proj-import-todo-list" class="proj-import-todo-list"></ul>
-              <div class="proj-import-footer">
-                <button id="proj-import-confirm" class="btn-primary" type="button">导入所选</button>
+              <ul id="dash-todo-list" class="dash-todo-list"></ul>
+              <div id="dash-todo-empty" class="dash-empty"></div>
+            </section>
+
+            <section class="dash-card proj-panel" id="proj-panel">
+              <div class="dash-card-head">
+                <h3>项目台账</h3>
               </div>
-              <div id="proj-import-msg" class="proj-import-msg"></div>
+              <div class="proj-filters">
+                <div class="proj-stage-tabs" id="proj-stage-tabs"></div>
+                <div class="proj-filter-row">
+                  <select id="proj-owner-filter" class="proj-owner-filter">
+                    <option value="all">全部负责人</option>
+                  </select>
+                  <input id="proj-search" class="proj-search" type="text" placeholder="搜索项目名" autocomplete="off" />
+                </div>
+              </div>
+              <div class="proj-list" id="proj-list"></div>
+              <div id="proj-empty" class="proj-empty" hidden></div>
+            </section>
+          </div>
+
+          <section class="dash-card" id="dash-cal-card">
+            <div class="dash-card-head">
+              <h3>本月日历</h3>
+              <div class="dash-cal-nav">
+                <button id="dash-cal-prev" type="button" aria-label="上月">‹</button>
+                <span id="dash-cal-title" class="dash-cal-title"></span>
+                <button id="dash-cal-next" type="button" aria-label="下月">›</button>
+              </div>
             </div>
+            <div class="dash-cal-weekdays">
+              <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+            </div>
+            <div id="dash-cal-grid" class="dash-cal-grid"></div>
+            <div id="dash-cal-pop" class="dash-cal-pop" hidden></div>
           </section>
-
-          <section class="proj-filters">
-            <div class="proj-stage-tabs" id="proj-stage-tabs"></div>
-            <select id="proj-owner-filter" class="proj-owner-filter">
-              <option value="all">全部负责人</option>
-            </select>
-            <input id="proj-search" class="proj-search" type="text" placeholder="搜索项目名" autocomplete="off" />
-          </section>
-
-          <section class="proj-list" id="proj-list"></section>
-          <div id="proj-empty" class="proj-empty" hidden></div>
         </div>
       </section>
 
@@ -272,7 +227,7 @@
       <section id="screen-5" class="screen">
         <div class="meet-wrap">
           <header class="meet-header">
-            <h2 class="meet-title">会议纪要</h2>
+            <h2 class="meet-title">MINUTES 会议纪要</h2>
             <p class="meet-sub">粘贴文本、上传文档或录音，AI 提炼结论、待办、负责人与截止时间</p>
           </header>
 
@@ -307,11 +262,11 @@
           <section class="meet-card">
             <div class="meet-card-head">
               <h3>最近纪要</h3>
+              <button id="meet-history-toggle" class="dash-ghost-btn" type="button" hidden>查看历史</button>
             </div>
             <ul id="meet-history-list" class="meet-history-list"></ul>
             <div id="meet-history-empty" class="meet-empty" hidden>
               <div class="empty-state">
-                <span class="empty-state-icon" aria-hidden="true">📄</span>
                 <p class="empty-state-title">还没有提炼过的纪要</p>
                 <p class="empty-state-hint">粘贴一段会议记录试试</p>
               </div>
@@ -324,7 +279,7 @@
       <section id="screen-6" class="screen">
         <div class="rep-wrap">
           <header class="rep-header">
-            <h2 class="rep-title">周报与向上汇报</h2>
+            <h2 class="rep-title">REPORT 周报与向上汇报</h2>
             <p class="rep-sub">自动汇总本周数据，AI 组织成文，数字说话</p>
           </header>
 
@@ -334,43 +289,26 @@
           </div>
 
           <section class="rep-panel" id="rep-panel-weekly">
-            <div class="rep-stats">
-              <div class="rep-stat">
-                <div class="rep-ring-wrap">
-                  <svg class="rep-ring" viewBox="0 0 64 64" aria-hidden="true">
-                    <circle class="rep-ring-bg" cx="32" cy="32" r="26"></circle>
-                    <circle class="rep-ring-fg" id="rep-ring-fg" cx="32" cy="32" r="26"></circle>
-                  </svg>
-                  <span class="rep-ring-num" id="rep-ring-num">—</span>
-                </div>
-                <span class="rep-stat-label">本周完成度</span>
-              </div>
-              <div class="rep-stat">
-                <div class="rep-stat-num" id="rep-stat-done">0</div>
-                <span class="rep-stat-label">完成</span>
-              </div>
-              <div class="rep-stat">
-                <div class="rep-stat-num" id="rep-stat-overdue">0</div>
-                <span class="rep-stat-label">延期</span>
-              </div>
-              <div class="rep-stat">
-                <div class="rep-stat-num" id="rep-stat-risks">0</div>
-                <span class="rep-stat-label">风险</span>
-              </div>
-            </div>
             <div id="rep-empty-hint" class="rep-empty-hint" hidden>
-              本周还没有数据，去第 2/4/5 屏填一点
+              本周还没有数据，去工作台/纪要屏填一点
               <button id="rep-goto-workbench" class="dash-ghost-btn" type="button">跳转工作台</button>
             </div>
-            <div class="rep-actions">
-              <button id="rep-generate-btn" class="btn-primary">生成本周周报</button>
+            <div class="rep-main-row">
+              <div class="rep-stats" id="rep-stats"></div>
+              <div class="rep-editor-wrap">
+                <textarea
+                  id="rep-editor"
+                  class="rep-editor"
+                  placeholder="周报生成后在这里，可直接编辑"
+                ></textarea>
+                <button id="rep-editor-close" class="rep-editor-close" type="button" aria-label="关闭并清空" title="关闭并清空" hidden>×</button>
+                <div class="rep-parse-actions">
+                  <button id="rep-generate-btn" class="btn-primary">生成本周周报</button>
+                </div>
+              </div>
             </div>
             <div id="rep-status"></div>
-            <textarea
-              id="rep-editor"
-              class="rep-editor"
-              placeholder="周报生成后在这里，可直接编辑"
-            ></textarea>
+            <div class="rep-prov" id="rep-prov"></div>
             <div class="rep-editor-actions">
               <span id="rep-editor-meta" class="rep-editor-meta"></span>
               <button id="rep-copy-btn" class="dash-ghost-btn" type="button" hidden>复制</button>
@@ -378,11 +316,13 @@
               <button id="rep-copy-email" class="dash-ghost-btn" type="button" hidden>复制为邮件正文</button>
             </div>
             <div class="rep-history">
-              <h3>历史周报</h3>
+              <div class="rep-history-head">
+                <h3>历史周报</h3>
+                <button id="rep-history-toggle" class="dash-ghost-btn" type="button" hidden>查看历史</button>
+              </div>
               <ul id="rep-history-list" class="rep-history-list"></ul>
               <div id="rep-history-empty" class="rep-empty">
               <div class="empty-state">
-                <span class="empty-state-icon" aria-hidden="true">📄</span>
                 <p class="empty-state-title">暂无历史周报</p>
                 <p class="empty-state-hint">点「生成本周周报」试试</p>
               </div>
@@ -392,15 +332,18 @@
 
           <section class="rep-panel" id="rep-panel-upward" hidden>
             <p class="rep-upward-hint">基于「生成本周周报」标签里的当前内容改写为适合发给领导的版本。</p>
-            <div class="rep-actions">
-              <button id="rep-upward-btn" class="btn-primary">生成向上汇报</button>
+            <div class="rep-editor-wrap">
+              <textarea
+                id="rep-upward-editor"
+                class="rep-editor"
+                placeholder="向上汇报生成后在这里，可直接编辑"
+              ></textarea>
+              <div class="rep-parse-actions">
+                <button id="rep-upward-btn" class="btn-primary">生成向上汇报</button>
+              </div>
             </div>
             <div id="rep-upward-status"></div>
-            <textarea
-              id="rep-upward-editor"
-              class="rep-editor"
-              placeholder="向上汇报生成后在这里，可直接编辑"
-            ></textarea>
+            <div class="rep-prov" id="rep-upward-prov"></div>
             <div class="rep-editor-actions">
               <button id="rep-upward-copy" class="dash-ghost-btn" type="button" hidden>复制</button>
               <button id="rep-upward-wechat" class="dash-ghost-btn" type="button" hidden>复制为微信消息</button>
@@ -414,20 +357,17 @@
       <section id="screen-7" class="screen">
         <div class="open-wrap">
           <header class="open-header">
-            <h2 class="open-title">新人开挂室</h2>
-            <p class="open-sub">充电区读书，破局区解困</p>
+            <h2 class="open-title">GROW 新人开挂室</h2>
+            <div class="open-tabs" id="open-tabs">
+              <button class="open-tab active" data-tab="books" type="button">充电区 · 新人书单</button>
+              <button class="open-tab" data-tab="dilemmas" type="button">破局区 · 新人困境</button>
+            </div>
           </header>
-
-          <div class="open-tabs" id="open-tabs">
-            <button class="open-tab active" data-tab="books" type="button">充电区 · 新人书单</button>
-            <button class="open-tab" data-tab="dilemmas" type="button">破局区 · 新人困境</button>
-          </div>
 
           <!-- 书单 tab -->
           <section class="open-panel" id="open-panel-books">
             <div class="open-books-layout">
               <div class="open-books-main">
-                <div class="open-sort-hint">按必读优先级排序：P0 入职前先看</div>
                 <div class="open-filters">
                   <select id="open-role-filter" class="open-select">
                     <option value="all">全部岗位</option>
@@ -439,7 +379,7 @@
                     <button class="open-stage-btn" data-stage="入职3个月" type="button">入职3个月</button>
                   </div>
                 </div>
-                <div class="open-books" id="open-books"></div>
+                <div class="open-book-stack" id="open-book-stack"></div>
                 <div id="open-books-empty" class="open-empty" hidden>
                   <div class="empty-state">
                     <span class="empty-state-icon" aria-hidden="true">🔍</span>
@@ -456,18 +396,23 @@
 
           <!-- 困境 tab -->
           <section class="open-panel" id="open-panel-dilemmas" hidden>
-            <input
-              id="open-dilemma-input"
-              class="open-dilemma-input"
-              type="text"
-              placeholder="说说你现在遇到的困境，库里没有就点「让 AI 拆解」…"
-              autocomplete="off"
-            />
+            <div class="open-dilemma-input-wrap">
+              <input
+                id="open-dilemma-input"
+                class="open-dilemma-input"
+                type="text"
+                placeholder="跟我说说你有什么困惑吧"
+                autocomplete="off"
+              />
+              <button id="open-dilemma-break" class="open-dilemma-break-btn" type="button">破局</button>
+            </div>
             <label class="open-fav-switch">
               <input type="checkbox" id="open-fav-only" />
               只看已收藏
             </label>
-            <div class="open-dilemma-tags" id="open-dilemma-tags"></div>
+            <div class="open-dilemma-carousel">
+              <div class="open-dilemma-tags" id="open-dilemma-tags"></div>
+            </div>
             <div id="open-dilemma-match" class="open-dilemma-match"></div>
             <div id="open-dilemma-detail"></div>
           </section>
@@ -527,6 +472,16 @@
         </div>
       </div>
     </div>
+
+    <!-- 全局收藏抽屉（导航「★ 收藏」入口打开，聚合岗位/困境/书单） -->
+    <div id="fav-drawer-mask" hidden></div>
+    <aside id="fav-drawer" aria-label="我的收藏">
+      <div class="fav-drawer-head">
+        <h3>我的收藏</h3>
+        <button id="fav-drawer-close" type="button" aria-label="关闭">×</button>
+      </div>
+      <div id="fav-drawer-body" class="fav-drawer-body"></div>
+    </aside>
 
     <script type="module" src="/src/main.js"></script>
   </body>

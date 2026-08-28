@@ -4,6 +4,7 @@ import './hero-react.tsx'
 import systemPrompt from './prompt.txt?raw'
 import todoParsePromptRaw from './prompt-todo-parse.txt?raw'
 import projectParsePromptRaw from './prompt-project-parse.txt?raw'
+import smartParsePromptRaw from './prompt-smart-parse.txt?raw'
 import meetingPrompt from './prompt-meeting.txt?raw'
 import weeklyPrompt from './prompt-weekly.txt?raw'
 import upwardPrompt from './prompt-upward.txt?raw'
@@ -22,6 +23,415 @@ const LS_KEY = 'job_library' // AI 生成收藏（存完整数据）
 const PRESET_FAV_KEY = 'preset_favorites' // 预置岗位收藏（只存 id，数据仍读 jobs.json）
 const THEME_KEY = 'theme_preview'
 const COLLAPSED_COUNT = 9 // 岗位库收起时展示 9 个 + 「查看更多」格
+
+// ============================================================
+// 演示模式 + AI 记忆层（无需配置 Key 也能完整体验；同时聚合用户上下文）
+// ============================================================
+const DEMO_MODE = !API_KEY
+const PROFILE_KEY = 'odb_profile'
+
+function loadProfile() {
+  try {
+    return JSON.parse(localStorage.getItem(PROFILE_KEY)) || {}
+  } catch {
+    return {}
+  }
+}
+function saveProfile(p) {
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(p))
+}
+function updateProfile(patch) {
+  const p = loadProfile()
+  const next = { ...p, ...patch, updatedAt: Date.now() }
+  saveProfile(next)
+  return next
+}
+
+// 演示模式状态提示（岗位拆解结果区用）
+function renderDemoStatus(msg) {
+  statusEl.innerHTML = ''
+  const card = el('div', 'demo-status')
+  card.append(el('span', 'demo-status-icon', '🧪'), el('p', 'demo-status-text', msg))
+  statusEl.append(card)
+}
+
+// 从 jobs.json 里按输入匹配内置岗位
+function findPresetJob(query) {
+  const q = (query || '').trim().toLowerCase()
+  if (!q) return null
+  const list = jobsData.jobs
+  let hit = list.find((j) => (j.name || '').toLowerCase() === q)
+  if (!hit) hit = list.find((j) => (j.name || '').toLowerCase().includes(q) || q.includes((j.name || '').toLowerCase()))
+  if (!hit) hit = list.find((j) => (j.category || '').toLowerCase().includes(q))
+  if (!hit) hit = list.find((j) => (j.dailyWork || []).some((t) => t.toLowerCase().includes(q)))
+  return hit || null
+}
+
+// 从困境库（含自定义）里按关键词匹配
+function findDilemma(query) {
+  const q = (query || '').trim().toLowerCase()
+  if (!q) return null
+  const all = getAllDilemmas()
+  let hit = all.find((d) => (d.title || '').toLowerCase().includes(q))
+  if (!hit) hit = all.find((d) => (d.tags || []).some((t) => (t || '').toLowerCase().includes(q)))
+  if (!hit) hit = all.find((d) => (d.solutions || []).some((s) => ((s.say || '') + (s.do || '')).toLowerCase().includes(q)))
+  return hit || null
+}
+
+// 从文本里猜到期日
+function guessDueDate(line) {
+  let m = line.match(/(\d{4})[-/年.](\d{1,2})[-/月.](\d{1,2})/)
+  if (m) return `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`
+  m = line.match(/(\d{1,2})月(\d{1,2})[日号]/)
+  if (m) return `${new Date().getFullYear()}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`
+  if (/今天|今日|today/i.test(line)) return todayStr()
+  if (/明天|明日|tomorrow/i.test(line)) return addDaysStr(1)
+  if (/后天/i.test(line)) return addDaysStr(2)
+  if (/下周|周[一二三四五六日天]/.test(line)) return addDaysStr(7)
+  return null
+}
+function addDaysStr(n) {
+  const d = new Date()
+  d.setDate(d.getDate() + n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+function itemTitle(x) {
+  return (x && (x.title || x.task || x.name)) || '事项'
+}
+
+// 生成给真实 AI 的用户记忆上下文（仅在配置了 Key 时注入 prompt）
+function profileContextText() {
+  const p = loadProfile()
+  const parts = []
+  if (p.landingJob) parts.push(`用户正在登陆的岗位：${p.landingJob}`)
+  if (p.lastRole) parts.push(`最近关注的岗位方向：${p.lastRole}`)
+  const s = buildCommonStats()
+  if (s.riskTotal > 0) parts.push(`当前有 ${s.riskTotal} 个延期/临期风险（${s.riskSub}）`)
+  if (p.dilemmasTackled && p.dilemmasTackled.length) parts.push(`用户已 tackling 过的困境主题：${p.dilemmasTackled.slice(0, 3).join('、')}`)
+  if (p.reportCount) parts.push(`用户已生成过 ${p.reportCount} 次周报`)
+  return parts.length ? '【用户记忆上下文】\n' + parts.join('\n') + '\n\n请结合以上背景作答，并在合适处呼应这些背景。' : ''
+}
+
+// 记忆线索（可见版）：把「用户登陆岗位 / 破解过的困境」转成一句前缀，注入各屏产出，
+// 让"AI 记得你"从进度条里一行小字，变成用户能直接看到的、被个性化改写的产出。
+function memoryLeadIn() {
+  const p = loadProfile()
+  const bits = []
+  if (p.landingJob) bits.push(`你正在登陆的【${p.landingJob}】岗`)
+  if (p.dilemmasTackled && p.dilemmasTackled.length)
+    bits.push(`你曾破解「${p.dilemmasTackled[p.dilemmasTackled.length - 1]}」`)
+  return bits.length ? `🧠 已结合${bits.join('、')}的背景为你整理` : ''
+}
+
+// ===== P1-3：AI 产出来源 / 时间标注 + 演示可信横幅 =====
+function aiProvStamp(when) {
+  const d = when ? new Date(when) : new Date()
+  const p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+function aiProvHTML(kind, when) {
+  const t = aiProvStamp(when)
+  if (kind === 'demo') {
+    return `<div class="ai-prov demo"><span class="ai-prov-ico">🧪</span><div class="ai-prov-body"><div class="ai-prov-title">演示模式 · AI 示例内容</div><div class="ai-prov-desc">以下由 AI 基于内置示例数据生成，并非你的真实工作数据。配置 API Key 后将基于你的真实输入实时生成。</div><div class="ai-prov-time">生成于 ${t}</div></div></div>`
+  }
+  if (kind === 'real-ai') {
+    return `<div class="ai-prov tag"><span>🤖 AI 生成</span><span class="ai-prov-dot">·</span><span>${t}</span></div>`
+  }
+  return `<div class="ai-prov tag curated"><span>📚 精选内容</span><span class="ai-prov-dot">·</span><span>登陆岛</span></div>`
+}
+function prependHTML(wrap, html) {
+  const tmp = document.createElement('div')
+  tmp.innerHTML = html.trim()
+  while (tmp.firstChild) wrap.insertBefore(tmp.firstChild, wrap.firstChild)
+}
+
+// ===== 7 个 AI 入口的离线兜底 =====
+function demoJobBreakdown(name) {
+  const hit = findPresetJob(name)
+  statusEl.innerHTML = ''
+  if (hit) {
+    updateProfile({ landingJob: hit.name, lastRole: hit.category })
+    renderResult(hit, { favoritable: true, preset: true })
+    logActivity('demo-job', '演示模式拆解：' + hit.name)
+  } else {
+    const sample = jobsData.jobs.find((j) => j.id === 'product-manager') || jobsData.jobs[0]
+    updateProfile({ landingJob: sample.name, lastRole: sample.category })
+    renderResult(sample, { favoritable: true, preset: true })
+    logActivity('demo-job', '演示模式示例拆解：' + sample.name)
+  }
+  renderOnboardingProgress()
+}
+
+function demoSmartParse(text) {
+  const lines = text.split(/\n+/).map((s) => s.trim()).filter(Boolean)
+  const todos = []
+  const projects = []
+  // 项目关键词：出现这些词且带日期/负责人的行，更可能是一个项目节点
+  const projectKw = /项目|拍摄|脚本|发布会|宣传片|改版|剪辑|物料|上线|交付|初稿|大纲|短视频|直播|活动|campaign/i
+  for (const line of lines) {
+    const due = guessDueDate(line)
+    const ownerMatch = line.match(/([\u4e00-\u9fa5]{2,4})(?=负责|Owner|owner|牵头|主责|执行)/)
+    const owner = ownerMatch ? ownerMatch[1] : '我'
+    const isExplicitProject = /^项目[:：]|项目[-—]|【项目】|项目名称/.test(line)
+    const looksLikeProject = projectKw.test(line) && (due || /负责|owner|风险|延期|截止|交付/.test(line))
+    if (isExplicitProject || looksLikeProject) {
+      const title = line
+        .replace(/^项目[:：\-—]|【项目】|项目名称[:：]?/, '')
+        .replace(/\d{4}[-/年.]\d{1,2}[-/月.]\d{1,2}|\d{1,2}月\d{1,2}[日号]?|今天|今日|明天|明日|下周|周[一二三四五六日天]/g, '')
+        .replace(/负责[:：]?|owner[:：]?/i, '')
+        .replace(/[，,。.；;]+$/g, '')
+        .trim()
+      const risks = []
+      if (/风险|延期|人手不够|缺人|未定|没定|可能/.test(line)) risks.push('存在潜在延期/资源风险')
+      projects.push({ name: title || line, deadline: due, owner, risks })
+      continue
+    }
+    const prio = /紧急|立刻|马上|尽快|高优|重要|必须/.test(line) ? '高' : /不急|有空|低优|次要|暂缓/.test(line) ? '低' : '中'
+    const title = line
+      .replace(/\d{4}[-/年.]\d{1,2}[-/月.]\d{1,2}|\d{1,2}月\d{1,2}[日号]?|今天|今日|明天|明日|下周|周[一二三四五六日天]/g, '')
+      .replace(/[，,。.；;]+$/g, '')
+      .trim() || line
+    todos.push({ title, dueDate: due, priority: prio, note: null })
+  }
+  if (!todos.length && !projects.length) {
+    todos.push({ title: '梳理本周产品需求池，输出优先级清单', dueDate: addDaysStr(2), priority: '高', note: '来自演示数据' })
+    todos.push({ title: '跟进上线后核心指标波动，写一页复盘', dueDate: addDaysStr(4), priority: '中', note: null })
+    todos.push({ title: '约 mentor 做一次 1:1 对齐', dueDate: addDaysStr(1), priority: '中', note: null })
+  }
+  renderSmartConfirm({ todos, projects })
+  logActivity('demo-parse', '演示模式解析排期')
+  renderOnboardingProgress()
+}
+
+function demoExtractMeeting(text) {
+  const lines = text.split(/\n+/).map((s) => s.trim()).filter(Boolean)
+  const title = (lines[0] || '本周同步会').slice(0, 40)
+  const conclusions = []
+  const actionItems = []
+  const openQuestions = []
+  for (const line of lines.slice(1)) {
+    if (/决定|结论|确认|达成一致|敲定|对齐/.test(line)) conclusions.push(line)
+    else if (/待办|行动|去做|负责|跟进|排期|下周|落实/.test(line))
+      actionItems.push({ task: line, owner: '〔负责人待确认〕', deadline: guessDueDate(line) || '〔时间待确认〕', priority: 'low' })
+    else if (/\?|？|疑问|待定|不确定|不清楚/.test(line)) openQuestions.push(line)
+    else if (line) conclusions.push(line)
+  }
+  if (!conclusions.length && !actionItems.length && !openQuestions.length) {
+    conclusions.push('本期核心目标是对齐本周交付优先级，确保关键路径不阻塞')
+    actionItems.push({ task: '整理需求池并按优先级排期', owner: '我', deadline: addDaysStr(3), priority: 'medium' })
+    actionItems.push({ task: '跟进上线数据，输出一页复盘', owner: '我', deadline: addDaysStr(5), priority: 'medium' })
+    openQuestions.push('下季度资源是否追加尚未确认')
+  }
+  const meeting = {
+    id: 'm' + Date.now(),
+    title,
+    date: todayStr(),
+    conclusions,
+    actionItems,
+    openQuestions,
+    createdAt: Date.now(),
+  }
+  const meetLead = memoryLeadIn()
+  if (meetLead) meeting.memoryNote = meetLead
+  const meetings = loadMeetings()
+  meetings.unshift(meeting)
+  saveMeetings(meetings)
+  renderMeetStatus('none')
+  renderMeetingResult(meeting)
+  logActivity('demo-meeting', '演示模式提炼纪要')
+  renderOnboardingProgress()
+}
+
+function buildWeeklyText(snap) {
+  const job = loadProfile().landingJob
+  const L = []
+  L.push(`本周工作汇报（${snap.weekStart} ~ ${snap.today}）`)
+  L.push('')
+  if (job) L.push(`📌 基于你正在登陆的【${job}】岗，本周工作如下：`)
+  L.push(`一、整体进展：本周完成 ${snap.completed.length} 项，进行中 ${snap.projects.length} 个项目，整体完成度 ${snap.completion}%。`)
+  L.push('')
+  if (snap.completed.length) {
+    L.push('二、本周完成')
+    for (const c of snap.completed) L.push(`• ${itemTitle(c)}`)
+    L.push('')
+  }
+  if (snap.projects.length) {
+    L.push('三、进行中项目')
+    for (const p of snap.projects) L.push(`• ${itemTitle(p)}（${p.stage || '进行中'}）`)
+    L.push('')
+  }
+  if (snap.overdue.length) {
+    L.push('四、需要关注（逾期/临期）')
+    for (const o of snap.overdue) L.push(`• ${itemTitle(o)} — 请协助排期`)
+    L.push('')
+  }
+  if (snap.risks.length) {
+    L.push('五、风险与待协调')
+    for (const r of snap.risks) L.push(`• ${itemTitle(r)}`)
+    L.push('')
+  }
+  if (snap.nextWeek.length) {
+    L.push('六、下周计划')
+    for (const n of snap.nextWeek) L.push(`• ${itemTitle(n)}`)
+    L.push('')
+  }
+  L.push(`（本汇报由登陆岛基于你的真实数据生成${job ? `，并已结合你登陆的【${job}】岗背景` : ''}，可直接编辑后复制）`)
+  return L.join('\n')
+}
+
+function demoGenerateWeekly() {
+  const snap = buildWeeklySnapshot()
+  const content = buildWeeklyText(snap)
+  repEditorEl.value = content
+  const reports = loadReports()
+  const existing = reports.find((r) => r.weekStart === snap.weekStart)
+  if (existing) {
+    existing.weekly = content
+    existing.createdAt = Date.now()
+  } else {
+    reports.unshift({ id: 'r' + Date.now(), weekStart: snap.weekStart, weekly: content, upward: null, createdAt: Date.now() })
+  }
+  saveReports(reports)
+  repCopyBtn.hidden = false
+  repCopyWechatBtn.hidden = false
+  repCopyEmailBtn.hidden = false
+  updateRepEditorClose()
+  renderRepHistory()
+  refreshRepStats()
+  updateRepGenerateBtn()
+  const repProvEl = document.getElementById('rep-prov')
+  if (repProvEl) repProvEl.innerHTML = aiProvHTML('demo')
+  updateProfile({ reportCount: (loadProfile().reportCount || 0) + 1 })
+  logActivity('demo-weekly', '演示模式生成周报')
+  renderOnboardingProgress()
+}
+
+function demoGenerateUpward(weeklyText) {
+  const snap = buildWeeklySnapshot()
+  const job = loadProfile().landingJob
+  const L = []
+  L.push('【向上汇报 · 给领导的版本】')
+  L.push('')
+  if (job) L.push(`📌 结合你正在登陆的【${job}】岗与本周真实数据，向领导同步如下：`)
+  L.push('领导好，本周同步三件事：')
+  L.push('')
+  L.push(`1）进度：本周完成 ${snap.completed.length} 项，核心项目按计划推进，整体完成度 ${snap.completion}%。`)
+  if (snap.risks.length || snap.overdue.length) {
+    const topRisk = (snap.risks[0] && itemTitle(snap.risks[0])) || (snap.overdue[0] && itemTitle(snap.overdue[0])) || '部分排期'
+    L.push(`2）需要支持：当前有 ${snap.risks.length + snap.overdue.length} 项存在延期/临期风险，主要是「${topRisk}」${job ? `，在【${job}】岗的职责范围内` : ''}，希望领导帮忙协调资源与优先级。`)
+  } else {
+    L.push('2）风险：本周暂无重大阻塞，如有变化第一时间同步。')
+  }
+  L.push('3）下周重点：' + (snap.nextWeek.length ? snap.nextWeek.map((n) => itemTitle(n)).join('、') : '持续推进在手项目'))
+  L.push('')
+  L.push('—— 以上基于周报原文提炼，细节见周报。')
+  const content = L.join('\n')
+  repUpwardEditorEl.value = content
+  repUpwardCopyBtn.hidden = false
+  repUpwardWechatBtn.hidden = false
+  repUpwardEmailBtn.hidden = false
+  const reports = loadReports()
+  const r = reports.find((x) => x.weekStart === snap.weekStart)
+  if (r) {
+    r.upward = content
+    saveReports(reports)
+    renderRepHistory()
+  }
+  renderRepUpwardStatus('success', '向上汇报已生成（演示模式：主动暴露风险、向领导要支持）')
+  const upProvEl = document.getElementById('rep-upward-prov')
+  if (upProvEl) upProvEl.innerHTML = aiProvHTML('demo')
+  logActivity('demo-upward', '演示模式生成向上汇报')
+}
+
+function demoCustomDilemma(ask) {
+  const q = (ask || dilemmaLastAsk || '').trim()
+  if (!q) return
+  dilemmaLastAsk = q
+  const hit = findDilemma(q)
+  const base = hit || dilemmasData.dilemmas.find((d) => d.id === 'buwen') || dilemmasData.dilemmas[0]
+  const resolved = hit ? base : { ...base, id: 'c' + Date.now(), title: q.slice(0, 20) || '我的困境', ai: true }
+  if (!hit) {
+    const list = loadCustomDilemmas()
+    list.unshift(resolved)
+    saveCustomDilemmas(list)
+  }
+  selectedDilemmaId = resolved.id
+  renderDilemmaTags()
+  renderDilemmaDetail(resolved)
+  openDilemmaInputEl.value = ''
+  openDilemmaMatchEl.innerHTML = ''
+  const p = loadProfile()
+  const tackled = Array.from(new Set([...(p.dilemmasTackled || []), resolved.title])).slice(-10)
+  updateProfile({ dilemmasTackled: tackled })
+  logActivity('demo-dilemma', '演示模式拆解困境：' + q)
+  renderOnboardingProgress()
+}
+
+function demoParseJd(text) {
+  const hit = findPresetJob(text) || jobsData.jobs.find((j) => j.id === 'product-manager') || jobsData.jobs[0]
+  updateProfile({ landingJob: hit.name, lastRole: hit.category })
+  const job = {
+    ...hit,
+    jobName: hit.name,
+    oneLineTruth: hit.oneLineTruth || `${hit.name}：真实的一天，远不止岗位名写的那些`,
+  }
+  jdLastJobName = hit.name
+  renderJdResult(job)
+  jdChatMessages = []
+  jdChatSystem = jdChatPrompt.replace('{上一步生成的 JSON}', JSON.stringify(job))
+  jdChatBoxEl.innerHTML = ''
+  jdChatEl.hidden = false
+  renderJdStatus('none')
+  logActivity('demo-jd', '演示模式拆解 JD：' + hit.name)
+  renderOnboardingProgress()
+}
+
+// ===== 登陆进度主线（由真实数据驱动）+ AI 记忆展示（融合进新手引导浮层）=====
+function buildProgressHtml() {
+  const landing = loadLibrary().length > 0 || !!loadProfile().landingJob
+  const ledger = loadTodos().length + loadProjects().length > 0
+  const minutes = loadMeetings().length > 0
+  const report = !!loadReports().find((r) => r.weekly)
+  const steps = [
+    { label: '拆解岗位', done: !!landing },
+    { label: '建工作台台账', done: ledger },
+    { label: '出会议纪要', done: minutes },
+    { label: '交周报', done: report },
+  ]
+  const doneCount = steps.filter((s) => s.done).length
+  const pct = Math.round((doneCount / steps.length) * 100)
+  const p = loadProfile()
+  const memoryBits = []
+  if (p.landingJob) memoryBits.push(`正在登陆【${p.landingJob}】`)
+  const s = buildCommonStats()
+  if (s.riskTotal > 0) memoryBits.push(`${s.riskTotal} 个延期/临期风险`)
+  if (p.dilemmasTackled && p.dilemmasTackled.length) memoryBits.push(`破解过 ${p.dilemmasTackled.length} 个困境`)
+  if (p.reportCount) memoryBits.push(`生成过 ${p.reportCount} 次周报`)
+  return `
+    <div class="onb-head">
+      <span class="onb-title">登陆进度</span>
+      <span class="onb-pct">${pct}%</span>
+    </div>
+    <div class="onb-track"><div class="onb-fill" style="width:${pct}%"></div></div>
+    <div class="onb-steps">
+      ${steps.map((st) => `<span class="onb-step ${st.done ? 'done' : ''}">${st.done ? '✓' : '○'} ${st.label}</span>`).join('')}
+    </div>
+    ${
+      memoryBits.length
+        ? `<div class="onb-memory">🧠 AI 记得你：${memoryBits.join(' · ')}</div>`
+        : `<div class="onb-memory onb-memory-empty">🧠 AI 记忆已就绪：你的每一步都会被记住，跨屏协同</div>`
+    }
+    ${DEMO_MODE ? `<div class="onb-demo">🧪 演示模式：无需配置 Key，所有 AI 功能均可直接体验</div>` : ''}
+  `
+}
+
+// 仅在新手引导浮层内渲染（原独立进度条已移入新手引导，不再置于首屏上方）
+function renderOnboardingProgress() {
+  const host = document.getElementById('onb-progress-host')
+  if (!host) return
+  host.innerHTML = buildProgressHtml()
+  if (typeof renderEntryProgress === 'function') renderEntryProgress()
+}
 
 // 8 个结果模块，渲染顺序严格按任务表（oneLineTruth 单独大字渲染，不在此列）
 const MODULES = [
@@ -103,7 +513,8 @@ function emptyStateHTML(icon, title, hint = '') {
 
 // ===== 配色切换（临时，选定后删除） =====
 function initThemeSwitcher() {
-  document.documentElement.dataset.theme = localStorage.getItem(THEME_KEY) || 'blue'
+  // 定稿配色为奶油毛玻璃，不再使用霓虹主题切换
+  // document.documentElement.dataset.theme = localStorage.getItem(THEME_KEY) || 'blue'
   // 配色预览临时控件：正常访问隐藏，URL 带 ?theme=1 时唤出（定稿配色后整体删除）
   // 顶部导航已被 FloatingNav 替代，这里做空值守卫防止 URL 触发时炸掉
   if (location.search.includes('theme=1')) {
@@ -128,8 +539,8 @@ async function generate() {
   if (generating) return
   lastInput = name
 
-  if (!API_KEY) {
-    renderKeyGuide()
+  if (DEMO_MODE) {
+    demoJobBreakdown(name)
     return
   }
 
@@ -148,7 +559,7 @@ async function generate() {
         model: 'deepseek-chat',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `岗位：${name}。宁可写满也不要提前收工` },
+          { role: 'user', content: `${profileContextText()}\n岗位：${name}。宁可写满也不要提前收工` },
         ],
         temperature: 0.7,
         max_tokens: 2000,
@@ -228,6 +639,58 @@ function renderError(msg) {
   statusEl.append(card)
 }
 
+// 岗位拆解模块内容（preset 点击 / JD 拆解结果共用）
+function populateModuleBody(body, m, items) {
+  const inner = el('div', 'module-body-inner')
+
+  if (m.type === 'tags') {
+    const tagGrid = el('div', 'tag-grid tag-grid--compact')
+    for (const it of items) {
+      const [name] = splitPair(it)
+      tagGrid.append(el('span', 'tag-pill', name || it))
+    }
+    inner.append(tagGrid)
+    body.append(inner)
+    return
+  }
+
+  if (m.type === 'checklist') {
+    const ul = el('ul', 'module-list')
+    for (const it of items) {
+      const li = el('li')
+      const label = el('label', 'check-item')
+      const cb = el('input')
+      cb.type = 'checkbox'
+      label.append(cb, el('span', 'check-text', it))
+      li.append(label)
+      ul.append(li)
+    }
+    inner.append(ul)
+    body.append(inner)
+    return
+  }
+
+  const ul = el('ul', 'module-list')
+  for (const it of items) {
+    const li = el('li')
+    if (m.type === 'collab') {
+      const [role, desc] = splitPair(it)
+      if (role) li.append(el('strong', 'collab-role', role + '：'))
+      li.append(el('span', '', desc || it))
+    } else {
+      const [label, rest] = splitPair(it)
+      if (label) {
+        li.append(el('strong', 'module-item-label', label + '：'), el('span', '', rest || it))
+      } else {
+        li.append(el('span', '', it))
+      }
+    }
+    ul.append(li)
+  }
+  inner.append(ul)
+  body.append(inner)
+}
+
 // ===== 结果渲染（8 模块） =====
 function renderResult(job, { favoritable = false, preset = false } = {}, target = resultEl) {
   target.innerHTML = ''
@@ -245,10 +708,15 @@ function renderResult(job, { favoritable = false, preset = false } = {}, target 
     '</svg><span>返回岗位库</span>'
   backBtn.addEventListener('click', () => {
     const lib = document.querySelector('.library')
-    if (!lib) return
-    const rect = lib.getBoundingClientRect()
-    // 避开顶部 fixed nav，64px 偏移
-    window.scrollTo({ top: rect.top + window.scrollY - 64, behavior: 'smooth' })
+    // 先清空结果再滚动，避免结果区高度变化导致跳转偏移
+    target.innerHTML = ''
+    statusEl.innerHTML = ''
+    if (lib) {
+      requestAnimationFrame(() => {
+        const rect = lib.getBoundingClientRect()
+        window.scrollTo({ top: rect.top + window.scrollY - 70, behavior: 'smooth' })
+      })
+    }
   })
   head.append(backBtn)
 
@@ -284,66 +752,64 @@ function renderResult(job, { favoritable = false, preset = false } = {}, target 
   const grid = el('div', 'modules-grid')
   for (const m of MODULES) {
     const items = Array.isArray(job[m.key]) ? job[m.key] : []
-    const card = el('section', 'module-card')
+    const card = el('section', 'module-card module-card--' + m.key)
     if (!items.length) card.classList.add('is-empty')
     const headBtn = el('button', 'module-head')
     headBtn.type = 'button'
-    headBtn.append(el('span', 'module-title', m.title), el('span', 'module-count', items.length ? String(items.length) : '—'))
+    const titleSpan = el('span', 'module-title', m.title)
+    if (m.type === 'checklist') {
+      const checkIcon = document.createElement('span')
+      checkIcon.innerHTML = '<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5L6.5 12L13 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      titleSpan.append(checkIcon)
+    }
+    headBtn.append(titleSpan, el('span', 'module-count', items.length ? String(items.length) : '—'))
     headBtn.addEventListener('click', () => card.classList.toggle('collapsed'))
     const collapse = el('div', 'module-collapse')
     const body = el('div', 'module-body')
     if (!items.length) {
       // 空数据兜底：保持 6 格结构完整
-      body.append(el('p', 'module-empty', '这部分内容还在整理中'))
+      const inner = el('div', 'module-body-inner')
+      inner.append(el('p', 'module-empty', '这部分内容还在整理中'))
+      body.append(inner)
       collapse.append(body)
       card.append(headBtn, collapse)
       grid.append(card)
       continue
     }
-    if (m.type === 'tags') {
-      const tagGrid = el('div', 'tag-grid')
-      for (const it of items) {
-        const [name, desc] = splitPair(it)
-        const tag = el('div', 'tag-card')
-        if (name) tag.append(el('strong', 'tag-name', name))
-        if (desc) tag.append(el('span', 'tag-desc', desc))
-        tagGrid.append(tag)
-      }
-      body.append(tagGrid)
-    } else if (m.type === 'checklist') {
-      const ul = el('ul', 'module-list')
-      for (const it of items) {
-        const li = el('li')
-        const label = el('label', 'check-item')
-        const cb = el('input')
-        cb.type = 'checkbox'
-        // 纯展示：点击可勾选，但不持久化
-        label.append(cb, el('span', 'check-text', it))
-        li.append(label)
-        ul.append(li)
-      }
-      body.append(ul)
-    } else {
-      const ul = el('ul', 'module-list')
-      for (const it of items) {
-        const li = el('li')
-        if (m.type === 'collab') {
-          const [role, desc] = splitPair(it)
-          if (role) li.append(el('strong', 'collab-role', role + '：'))
-          li.append(el('span', '', desc || it))
-        } else {
-          li.append(el('span', '', it))
-        }
-        ul.append(li)
-      }
-      body.append(ul)
-    }
+    populateModuleBody(body, m, items)
     collapse.append(body)
     card.append(headBtn, collapse)
     grid.append(card)
   }
   wrap.append(grid)
   target.append(wrap)
+  requestAnimationFrame(() => syncBottomRowHeight())
+}
+
+// 让底行左右两格高度跟随打交道地图，溢出内部滚动
+let bottomRowObserver = null
+
+function syncBottomRowHeight() {
+  if (bottomRowObserver) {
+    bottomRowObserver.disconnect()
+    bottomRowObserver = null
+  }
+  const grid = document.querySelector('.modules-grid')
+  if (!grid) return
+  const collab = grid.querySelector('.module-card--collaboration')
+  const pitfalls = grid.querySelector('.module-card--firstMonthPitfalls')
+  const week1 = grid.querySelector('.module-card--week1Checklist')
+  if (!collab || !pitfalls || !week1) return
+
+  const setHeight = () => {
+    const h = collab.getBoundingClientRect().height
+    pitfalls.style.maxHeight = `${h}px`
+    week1.style.maxHeight = `${h}px`
+  }
+
+  bottomRowObserver = new ResizeObserver(setHeight)
+  bottomRowObserver.observe(collab)
+  setHeight()
 }
 
 // ===== 岗位库：正方形网格 =====
@@ -375,6 +841,8 @@ function saveToLibrary(job, userInput, favBtn) {
   localStorage.setItem(LS_KEY, JSON.stringify(lib))
   renderFavGrid()
   logActivity('job-save', '收藏岗位：' + userInput)
+  updateProfile({ landingJob: userInput, lastRole: job.category || job.lastRole || '' })
+  renderOnboardingProgress()
   if (favBtn) {
     favBtn.textContent = '已收藏 ✓'
     favBtn.disabled = true
@@ -475,13 +943,21 @@ function buildFanCard(job, idx) {
     if (presetExpanded) return
     scheduleAutoFan(FAN_RESUME_MS)
   })
-  card.addEventListener('click', () => {
-    // 点击卡片 → 把岗位名注入到上方 composer，让 "一键拆解" 可复用
-    if (typeof inputEl !== 'undefined' && inputEl) inputEl.value = job.name
-    renderResult(job, { preset: true })
-    resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  // 键盘可达性：Enter / Space 打开岗位拆解（鼠标/触摸点击由下方轮播 IIFE 统一处理）
+  card.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault()
+      openPresetDecomposition(job)
+    }
   })
   return card
+}
+
+// 点击 / 键盘激活岗位卡片 → 把岗位名注入上方 composer 并渲染具体拆解
+function openPresetDecomposition(job) {
+  if (typeof inputEl !== 'undefined' && inputEl) inputEl.value = job.name
+  renderResult(job, { preset: true })
+  resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 // fan 模式：根据 activeFanIdx 重算每张卡片的 --offset-raw / --abs-offset
@@ -633,44 +1109,60 @@ function toggleComparePick(job, preset) {
   if (comparePicks.length === 2) renderJobCompare(comparePicks[0].job, comparePicks[1].job)
 }
 
+function buildCompareCard(job, other, selected) {
+  const card = el('section', 'module-card job-compare-card' + (selected ? ' is-selected' : ''))
+  const head = el('div', 'module-head')
+  head.append(el('span', 'module-title', job.name))
+  if (selected) head.append(el('span', 'job-compare-badge', '已选定'))
+  card.append(head)
+
+  const body = el('div', 'module-body job-compare-card-body')
+  const inner = el('div', 'module-body-inner')
+  const rows = [
+    { title: '一句话本质', get: (j) => (j.oneLineTruth ? [j.oneLineTruth] : []) },
+    ...MODULES.map((m) => ({ title: m.title, get: (j) => (Array.isArray(j[m.key]) ? j[m.key] : []) })),
+  ]
+
+  for (const r of rows) {
+    const mine = r.get(job)
+    const theirs = r.get(other)
+    if (!mine.length && !theirs.length) continue
+
+    const section = el('div', 'job-compare-section')
+    section.append(el('div', 'job-compare-section-title', r.title))
+    const ul = el('ul', 'job-compare-list')
+    if (mine.length) {
+      for (const it of mine) {
+        const li = el('li', '', it)
+        ul.append(li)
+      }
+    } else {
+      const li = el('li', 'is-missing', '暂无')
+      ul.append(li)
+    }
+    section.append(ul)
+    inner.append(section)
+  }
+
+  body.append(inner)
+  card.append(body)
+  return card
+}
+
 function renderJobCompare(a, b) {
   jobCompareResultEl.innerHTML = ''
   const head = el('div', 'job-compare-head')
   head.append(el('h3', 'job-compare-title', `${a.name} vs ${b.name}`))
   head.append(el('p', 'job-compare-sub', '同维度并排看差异，帮你决定先深入哪一个'))
   jobCompareResultEl.append(head)
-  const table = el('table', 'job-compare-table')
-  const thead = el('thead')
-  const hr = el('tr')
-  hr.append(el('th', '', '维度'), el('th', '', a.name), el('th', '', b.name))
-  thead.append(hr)
-  table.append(thead)
-  const tbody = el('tbody')
-  const rows = [
-    { title: '一句话本质', get: (j) => (j.oneLineTruth ? [j.oneLineTruth] : []) },
-    ...MODULES.map((m) => ({ title: m.title, get: (j) => (Array.isArray(j[m.key]) ? j[m.key] : []) })),
-  ]
-  for (const r of rows) {
-    const va = r.get(a)
-    const vb = r.get(b)
-    if (!va.length && !vb.length) continue
-    const tr = el('tr')
-    tr.append(el('th', '', r.title))
-    for (const v of [va, vb]) {
-      const td = el('td')
-      if (v.length) {
-        const ul = el('ul')
-        for (const it of v) ul.append(el('li', '', it))
-        td.append(ul)
-      } else {
-        td.append(el('span', 'job-compare-none', '—'))
-      }
-      tr.append(td)
-    }
-    tbody.append(tr)
-  }
-  table.append(tbody)
-  jobCompareResultEl.append(table)
+
+  const wrap = el('div', 'job-compare-cards')
+  wrap.append(buildCompareCard(a, b, false))
+  const vs = el('div', 'job-compare-vs', 'VS')
+  wrap.append(vs)
+  wrap.append(buildCompareCard(b, a, true))
+
+  jobCompareResultEl.append(wrap)
   jobCompareResultEl.hidden = false
   jobCompareResultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
 }
@@ -716,11 +1208,81 @@ document.addEventListener('keydown', (e) => {
 // 启动岗位库自动轮播（页面加载完成且非 grid 时）
 scheduleAutoFan(FAN_AUTO_MS)
 
+// 岗位库轮播：鼠标拖动 / 触摸滑动切换；非拖拽的单击视为"打开该岗位拆解"
+;(() => {
+  const carousel = presetGridEl
+  if (!carousel) return
+  const CARD_SPACING = 88 // 与 CSS 中 fan-card translateX 系数一致，拖动 88px 切换一张
+  let dragActive = false
+  let dragMoved = false
+  let startX = 0
+  let startIdx = 0
+  let currentDelta = 0
+
+  carousel.addEventListener('pointerdown', (e) => {
+    if (presetExpanded) return
+    // 不拦截收藏星（由卡片内独立处理）
+    if (e.target.closest('.fan-card-star')) return
+    dragActive = true
+    dragMoved = false
+    startX = e.clientX
+    startIdx = activeFanIdx
+    currentDelta = 0
+    try { carousel.setPointerCapture(e.pointerId) } catch { /* ignore */ }
+    carousel.classList.add('is-dragging')
+    clearAutoFan()
+  })
+
+  carousel.addEventListener('pointermove', (e) => {
+    if (!dragActive) return
+    const dx = e.clientX - startX
+    if (Math.abs(dx) > 8) dragMoved = true
+    currentDelta = dx
+    // 实时更新 activeFanIdx，让扇形卡片跟随手指/鼠标左右移动
+    const total = jobsData.jobs.length
+    const progress = dx / CARD_SPACING
+    activeFanIdx = (startIdx - progress + total * 1000) % total
+    setFanLayout()
+  })
+
+  carousel.addEventListener('pointerup', (e) => {
+    if (!dragActive) return
+    dragActive = false
+    carousel.classList.remove('is-dragging')
+    try { carousel.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
+    if (dragMoved) {
+      const total = jobsData.jobs.length
+      const steps = Math.round(currentDelta / CARD_SPACING)
+      // 向右拖 → 上一张；向左拖 → 下一张；没超过半张则弹回原位
+      const newIdx = Math.round(((startIdx - steps) % total + total) % total)
+      setActiveFan(newIdx)
+      scheduleAutoFan(FAN_RESUME_MS)
+      return
+    }
+    // 非拖拽 = 单击：命中指针下方的卡片并打开其拆解
+    // 注意 setPointerCapture 会让 e.target 指向 carousel 本身，故用 elementFromPoint 取真实卡片
+    const elem = document.elementFromPoint(e.clientX, e.clientY)
+    const hitCard = elem && elem.closest('.fan-card')
+    if (!hitCard) return
+    const idx = Number(hitCard.dataset.idx)
+    const job = jobsData.jobs[idx]
+    if (job) openPresetDecomposition(job)
+  })
+
+  carousel.addEventListener('pointercancel', () => {
+    dragActive = false
+    carousel.classList.remove('is-dragging')
+    // 若已产生位移，弹回起点，避免悬停在非整数索引
+    if (dragMoved) setActiveFan(startIdx)
+    scheduleAutoFan(FAN_RESUME_MS)
+  })
+})()
+
 // ===== 全局浮窗导航（React FloatingNav）已接管锚点滚动 / 当前屏高亮 / 拖拽 / 锁定 =====
 // 首屏入场 / 顶栏显隐 / 汉堡菜单 等旧逻辑全部移除——只有这唯一一条导航
 
 // ============================================================
-// 第 2 屏：今日工作台
+// 工作台（含项目台账，原第 2/4 屏合并）
 // ============================================================
 // ===== localStorage key 清单 =====
 // job_library        AI 生成收藏（第 3 屏，已有）
@@ -737,7 +1299,7 @@ scheduleAutoFan(FAN_AUTO_MS)
 // odb_dilemma_fav    困境收藏：困境 id 数组
 // odb_dilemma_custom AI 拆解的自定义困境：与 dilemmas.json 条目同格式 {id,title,tags,solutions[]}
 
-// ===== 第 2 屏 DOM =====
+// ===== 工作台 DOM =====
 const dashGreetingEl = $('dash-greeting')
 const dashGreetingTipEl = $('dash-greeting-tip')
 const dashInputEl = $('dash-input')
@@ -751,8 +1313,6 @@ const dashCalCardEl = $('dash-cal-card')
 const dashCalGridEl = $('dash-cal-grid')
 const dashCalTitleEl = $('dash-cal-title')
 const dashCalPopEl = $('dash-cal-pop')
-const dashActListEl = $('dash-act-list')
-const dashActEmptyEl = $('dash-act-empty')
 
 let confirmTodos = [] // 解析后待确认列表
 let todoFilter = 'all' // all / todo / done
@@ -794,7 +1354,6 @@ function logActivity(type, title) {
   const list = loadActivities()
   list.unshift({ type, title, time: Date.now() })
   saveActivities(list)
-  renderActivities()
 }
 
 // ===== 问候语（按访问时段） =====
@@ -853,23 +1412,26 @@ function daysBetween(a, b) {
   return Math.round(ms / 86400000)
 }
 
-// ===== 粘贴排期 → AI 解析 =====
+// ===== 粘贴排期 → AI 智能解析（自动分拣待办 / 台账） =====
 const SAMPLE_TEXT = `周三前把竞品分析发给王总，他说要在部门会上用
 下周一例会要汇报进度，ppt还没开始做
 回复采购部那封邮件，已经催了两遍
-周五下班前交报销单，记得贴发票
+项目A 宣传片拍摄 9月5号 张伟 人手不够可能延期
+新品发布会物料 2026/9/15截止 李娜负责
+品牌宣传片：初稿完了这周开始拍 王强 甲方场地没定有风险
 今天下午3点和设计对需求，先把页面稿过一遍
+公众号改版 下周五前上线 小周
 mentor 让整理上周会议纪要，说下周二前给他`
 
-async function parseTodos() {
+async function smartParse() {
   const text = dashInputEl.value.trim()
   if (!text) {
     dashInputEl.focus()
     return
   }
   if (parsing) return
-  if (!API_KEY) {
-    renderParseStatus('key')
+  if (DEMO_MODE) {
+    demoSmartParse(text)
     return
   }
   parsing = true
@@ -886,11 +1448,11 @@ async function parseTodos() {
       body: JSON.stringify({
         model: 'deepseek-chat',
         messages: [
-          { role: 'system', content: todoParsePromptRaw.replace('{{TODAY}}', todayStr()) },
+          { role: 'system', content: smartParsePromptRaw.replace('{{TODAY}}', todayStr()) },
           { role: 'user', content: `今天是 ${todayStr()}。请整理以下工作文本：\n\n${text}` },
         ],
         temperature: 0.2,
-        max_tokens: 1000,
+        max_tokens: 2000,
         response_format: { type: 'json_object' },
       }),
     })
@@ -901,19 +1463,27 @@ async function parseTodos() {
     const content = data.choices?.[0]?.message?.content
     if (!content) throw new Error('AI 返回内容为空，请重试')
     const parsed = parseJsonSafe(content)
-    const list = Array.isArray(parsed.todos) ? parsed.todos : []
-    if (!list.length) {
-      renderParseStatus('empty', parsed.note || '')
-      return
-    }
-    renderConfirmList(list)
+    renderSmartConfirm(parsed)
   } catch (err) {
     renderParseStatus('error', err.name === 'TypeError' ? '网络异常，请检查网络后重试' : err.message)
   } finally {
     parsing = false
     dashParseBtn.disabled = false
-    dashParseBtn.textContent = '解析'
+    dashParseBtn.textContent = '智能解析'
   }
+}
+
+// 智能分发：待办进 dash-confirm-list，项目进 proj-confirm-list，各自独立确认
+function renderSmartConfirm(parsed) {
+  const todos = Array.isArray(parsed.todos) ? parsed.todos : []
+  const projects = Array.isArray(parsed.projects) ? parsed.projects : []
+  if (!todos.length && !projects.length) {
+    renderParseStatus('empty', parsed.note || '')
+    return
+  }
+  renderParseStatus('none')
+  if (todos.length) renderConfirmList(todos)
+  if (projects.length) renderConfirmProjects(projects)
 }
 
 // 解析状态：key / loading / error / empty / success
@@ -933,7 +1503,7 @@ function renderParseStatus(kind, msg = '') {
     card.append(el('div', 'dash-status-icon', '⚠️'), el('h3', 'dash-status-title', '解析失败'), el('p', 'dash-status-text', msg))
     const retry = el('button', 'btn-secondary', '重试')
     retry.type = 'button'
-    retry.addEventListener('click', parseTodos)
+    retry.addEventListener('click', smartParse)
     card.append(retry)
   } else if (kind === 'empty') {
     card.append(el('div', 'dash-status-icon', 'ℹ️'), el('h3', 'dash-status-title', '没提取到可执行事项'), el('p', 'dash-status-text', msg || '换一段工作文本试试'))
@@ -1024,54 +1594,121 @@ function confirmAddTodos() {
   saveTodos(todos)
   confirmTodos = []
   dashConfirmEl.innerHTML = ''
-  renderParseStatus('success', `已添加 ${added} 条待办`)
+  renderParseStatus('none')
   logActivity('todo-add', `新增 ${added} 条待办`)
   refreshDashboard()
 }
 
-// ===== 四大统计卡片 =====
-function refreshStats() {
+// ===== 共享统计组件（工作台 + 周报屏复用） =====
+const RING_C = 2 * Math.PI * 26
+
+// 共享数据计算：本周完成度、风险、延期、待办等所有统计项的原始数据
+function buildCommonStats() {
   const todos = loadTodos()
   const today = todayStr()
   const monday = mondayStart()
   const active = todos.filter((t) => !t.done)
   const weekCreated = todos.filter((t) => t.createdAt >= monday.getTime())
-  const weekDone = weekCreated.filter((t) => t.done).length
+  const weekDone = weekCreated.filter((t) => t.done)
   const dueToday = active.filter((t) => t.dueDate === today).length
   const overdue = active.filter((t) => t.dueDate && t.dueDate < today).length
 
-  // P1 联动：第 4 屏台账项目的 deadline 也计入「延期风险」（逾期 / 3 天内临期）
+  // 台账项目的 deadline 计入「延期风险」（逾期 / 3 天内临期）
   const projRisk = loadProjects().filter((p) => {
     if (!p.deadline) return false
-    if (p.deadline < today) return true // 已逾期
-    return daysBetween(today, p.deadline) <= 3 // 3 天内到期
+    if (p.deadline < today) return true
+    return daysBetween(today, p.deadline) <= 3
   })
   const projOverdue = projRisk.filter((p) => p.deadline < today).length
   const projSoon = projRisk.length - projOverdue
   const riskTotal = overdue + projRisk.length
 
-  $('stat-progress-num').textContent = String(active.length)
-  $('stat-progress-sub').textContent = `本周新增 ${weekCreated.length}`
-  $('stat-todo-num').textContent = String(active.length)
-  $('stat-todo-sub').textContent = `今日到期 ${dueToday}`
-  $('stat-overdue-num').textContent = String(riskTotal)
-  $('stat-overdue-card').classList.toggle('danger', riskTotal > 0)
+  const total = weekCreated.length
+  const completion = total === 0 ? 0 : Math.round((weekDone.length / total) * 100)
+  const ratio = total === 0 ? 0 : weekDone.length / total
+
+  let riskSub
   if (riskTotal === 0) {
-    $('stat-overdue-sub').textContent = '暂无风险'
+    riskSub = '暂无风险'
   } else {
     const parts = []
     if (overdue) parts.push(`待办逾期 ${overdue}`)
     if (projOverdue) parts.push(`项目逾期 ${projOverdue}`)
     if (projSoon) parts.push(`项目临期 ${projSoon}`)
-    $('stat-overdue-sub').textContent = parts.join(' · ')
+    riskSub = parts.join(' · ')
   }
 
-  // 本周完成度：手写 SVG 圆环
-  const total = weekCreated.length
-  const ratio = total === 0 ? 0 : weekDone / total
-  const C = 2 * Math.PI * 26
-  $('dash-ring-num').textContent = total === 0 ? '—' : `${Math.round(ratio * 100)}%`
-  $('dash-ring-fg').setAttribute('stroke-dasharray', `${(ratio * C).toFixed(1)} ${C.toFixed(1)}`)
+  return {
+    todos, active, weekCreated, weekDone, dueToday,
+    overdue, projOverdue, projSoon, riskTotal, riskSub,
+    completion, ratio, total,
+  }
+}
+
+// 单卡片工厂：variant = 'dash'（4 列网格玻璃卡）或 'rep'（横向胶囊）
+// stat = { key, label, value, sub?, ring?, danger? }
+function renderStatCard(variant, stat) {
+  const isRep = variant === 'rep'
+  const p = isRep ? 'rep' : 'dash'
+  const card = el('div', isRep ? 'rep-stat' : 'dash-stat-card')
+  if (stat.danger) card.classList.add('danger')
+
+  if (stat.ring) {
+    const wrap = el('div', `${p}-ring-wrap`)
+    const svgNs = 'http://www.w3.org/2000/svg'
+    const svg = document.createElementNS(svgNs, 'svg')
+    svg.setAttribute('class', `${p}-ring`)
+    svg.setAttribute('viewBox', '0 0 64 64')
+    svg.setAttribute('aria-hidden', 'true')
+    const bg = document.createElementNS(svgNs, 'circle')
+    bg.setAttribute('class', `${p}-ring-bg`)
+    bg.setAttribute('cx', '32'); bg.setAttribute('cy', '32'); bg.setAttribute('r', '26')
+    const fg = document.createElementNS(svgNs, 'circle')
+    fg.setAttribute('class', `${p}-ring-fg`)
+    fg.setAttribute('cx', '32'); fg.setAttribute('cy', '32'); fg.setAttribute('r', '26')
+    svg.append(bg, fg)
+    const num = el('span', `${p}-ring-num`, stat.value)
+    wrap.append(svg, num)
+    card.append(wrap, el(isRep ? 'span' : 'div', `${p}-stat-label`, stat.label))
+  } else {
+    card.append(
+      el('div', `${p}-stat-num`, String(stat.value)),
+      el(isRep ? 'span' : 'div', `${p}-stat-label`, stat.label),
+    )
+    if (!isRep && stat.sub) {
+      card.append(el('div', `${p}-stat-sub`, stat.sub))
+    }
+  }
+  return card
+}
+
+function renderStatsGrid(container, variant, stats) {
+  if (!container) return
+  container.innerHTML = ''
+  for (const stat of stats) {
+    container.append(renderStatCard(variant, stat))
+  }
+  // 更新首个 ring 卡的 stroke-dasharray（dash/rep 各自只有一个 ring 卡）
+  const ringFg = container.querySelector('.dash-ring-fg, .rep-ring-fg')
+  if (ringFg) {
+    const target = stats.find((s) => s.ring)
+    if (target && typeof target.ringRatio === 'number') {
+      const ratio = target.ringRatio
+      ringFg.setAttribute('stroke-dasharray', `${(ratio * RING_C).toFixed(1)} ${RING_C.toFixed(1)}`)
+    }
+  }
+}
+
+// ===== 工作台统计（4 卡：进行中 / 待办 / 延期风险 / 本周完成度） =====
+function refreshStats() {
+  const s = buildCommonStats()
+  const stats = [
+    { key: 'progress', label: '进行中', value: s.active.length, sub: `今日到期 ${s.dueToday}` },
+    { key: 'todo', label: '待办', value: s.weekCreated.length, sub: `本周新增 ${s.weekCreated.length}` },
+    { key: 'overdue', label: '延期风险', value: s.riskTotal, sub: s.riskSub, danger: s.riskTotal > 0 },
+    { key: 'week', label: '本周完成度', value: s.total === 0 ? '—' : `${s.completion}%`, ring: true, ringRatio: s.ratio },
+  ]
+  renderStatsGrid($('dash-stats'), 'dash', stats)
 }
 
 // ===== 待办列表 =====
@@ -1083,7 +1720,7 @@ function renderTodoList() {
   dashTodoEmptyEl.hidden = filtered.length > 0
   dashTodoEmptyEl.innerHTML =
     todos.length === 0
-      ? emptyStateHTML('📋', '还没有待办', '粘贴上面的排期，点「解析」试试')
+      ? emptyStateHTML('<svg width="46" height="46" viewBox="0 0 48 48" fill="none" stroke="rgba(225,224,204,0.6)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="11" y="9" width="26" height="31" rx="3"/><rect x="19" y="5" width="10" height="6" rx="2"/><path d="M16 22l3 3 5-6"/><line x1="25" y1="24" x2="33" y2="24"/><line x1="16" y1="31" x2="33" y2="31"/><line x1="16" y1="37" x2="33" y2="37"/></svg>', '还没有待办', '粘贴上面的排期，点「解析」试试')
       : emptyStateHTML('📋', '这个筛选下没有待办')
   for (const t of filtered) {
     const li = el('li', 'dash-todo' + (t.done ? ' done' : ''))
@@ -1281,47 +1918,18 @@ function hideCalPopup() {
   dashCalPopEl.hidden = true
 }
 
-// ===== 最近动态 =====
+// 动态图标映射（数据仍写入 odb_activities 供导出；「最近动态」UI 已下线）
 const ACT_ICONS = { 'todo-add': '📝', 'todo-done': '✅', 'job-save': '⭐' }
-
-function renderActivities() {
-  const list = loadActivities().slice(0, 6)
-  dashActListEl.innerHTML = ''
-  dashActEmptyEl.hidden = list.length > 0
-  for (const a of list) {
-    const li = el('li', 'dash-act-item')
-    li.append(
-      el('span', 'dash-act-icon', ACT_ICONS[a.type] || '·'),
-      el('span', 'dash-act-title', a.title),
-      el('span', 'dash-act-time', relTime(a.time)),
-    )
-    dashActListEl.append(li)
-  }
-}
-
-function relTime(ts) {
-  const diff = Date.now() - ts
-  if (diff < 60e3) return '刚刚'
-  if (diff < 3600e3) return `${Math.floor(diff / 60e3)} 分钟前`
-  if (diff < 86400e3) return `${Math.floor(diff / 3600e3)} 小时前`
-  const d = new Date(ts)
-  const pad = (n) => String(n).padStart(2, '0')
-  const yesterday = new Date(Date.now() - 86400e3)
-  if (d.toDateString() === yesterday.toDateString()) return `昨天 ${pad(d.getHours())}:${pad(d.getMinutes())}`
-  const today = new Date()
-  if (d.getFullYear() === today.getFullYear()) return `${d.getMonth() + 1}月${d.getDate()}日`
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
-}
 
 // ===== 汇总刷新与事件绑定 =====
 function refreshDashboard() {
   refreshStats()
   renderTodoList()
   renderCalendar()
-  renderActivities()
+  renderOnboardingProgress()
 }
 
-dashParseBtn.addEventListener('click', parseTodos)
+dashParseBtn.addEventListener('click', smartParse)
 dashSampleBtn.addEventListener('click', () => {
   dashInputEl.value = SAMPLE_TEXT
   dashInputEl.focus()
@@ -1334,8 +1942,9 @@ document.querySelectorAll('.dash-tab').forEach((b) => {
     renderTodoList()
   })
 })
-$('stat-overdue-card').addEventListener('click', () => {
-  $('screen-4').scrollIntoView({ behavior: 'smooth' })
+$('dash-stats').addEventListener('click', (e) => {
+  const card = e.target.closest('.dash-stat-card.danger')
+  if (card) $('proj-panel').scrollIntoView({ behavior: 'smooth', block: 'center' })
 })
 $('dash-cal-prev').addEventListener('click', () => {
   calMonth--
@@ -1362,7 +1971,7 @@ renderGreeting()
 // refreshStats 依赖第 4 屏的 PROJECTS_KEY(此处尚在 TDZ),提前调用会被 loadProjects 的 try/catch 静默吞掉
 
 // ============================================================
-// 第 4 屏：项目台账
+// 工作台 · 项目台账（原第 4 屏，已并入工作台）
 // ============================================================
 // 阶段常量（内容模板：v1 固定 5 阶段，以后可扩展自定义）
 const PROJECT_STAGES = [
@@ -1375,18 +1984,9 @@ const PROJECT_STAGES = [
 
 const PROJECTS_KEY = 'odb_projects'
 
-// ===== 第 4 屏 DOM =====
-const projInputEl = $('proj-input')
-const projParseBtn = $('proj-parse-btn')
-const projSampleBtn = $('proj-sample-btn')
-const projImportBtn = $('proj-import-btn')
+// ===== 台账 DOM（已并入工作台） =====
 const projParseStatusEl = $('proj-parse-status')
 const projConfirmEl = $('proj-confirm-list')
-const projImportPanelEl = $('proj-import-panel')
-const projImportTodoListEl = $('proj-import-todo-list')
-const projImportConfirmBtn = $('proj-import-confirm')
-const projImportCloseBtn = $('proj-import-close')
-const projImportMsgEl = $('proj-import-msg')
 const projStageTabsEl = $('proj-stage-tabs')
 const projOwnerFilterEl = $('proj-owner-filter')
 const projSearchEl = $('proj-search')
@@ -1395,10 +1995,8 @@ const projEmptyEl = $('proj-empty')
 
 let confirmProjects = [] // 整理后待确认列表
 let projFilterStage = 'all'
-let projParsing = false
-let projImportChecked = new Set()
 
-// 第 2 屏动态图标扩展（只新增键，不改第 2 屏逻辑）
+// 动态图标扩展（只新增键）
 ACT_ICONS['proj-add'] = '📁'
 ACT_ICONS['proj-del'] = '🗑️'
 
@@ -1413,10 +2011,10 @@ function loadProjects() {
 
 function saveProjects(list) {
   localStorage.setItem(PROJECTS_KEY, JSON.stringify(list))
-  refreshStats() // P1 联动：台账变化即时反映到第 2 屏「延期风险」
+  refreshStats() // 台账变化即时反映到工作台「延期风险」
 }
 
-// ===== 粘贴工作清单 → AI 整理 =====
+// ===== 粘贴工作清单 → AI 整理（已并入工作台「智能解析」） =====
 const PROJ_SAMPLE_TEXT = `项目a 短视频脚本 8月30日前交脚本 张伟
 项目A 拍摄 9月5号 张伟 人手不够可能延期
 新品发布会物料 2026/9/15截止 李娜负责
@@ -1424,62 +2022,9 @@ const PROJ_SAMPLE_TEXT = `项目a 短视频脚本 8月30日前交脚本 张伟
 公众号改版 下周五前上线 小周
 项目a 剪辑 9月10日交付`
 
-async function parseProjects() {
-  const text = projInputEl.value.trim()
-  if (!text) {
-    projInputEl.focus()
-    return
-  }
-  if (projParsing) return
-  if (!API_KEY) {
-    renderProjStatus('key')
-    return
-  }
-  projParsing = true
-  projParseBtn.disabled = true
-  projParseBtn.textContent = '整理中…'
-  renderProjStatus('loading')
-  try {
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: [
-          { role: 'system', content: projectParsePromptRaw.replace('{{TODAY}}', todayStr()) },
-          { role: 'user', content: `今天是 ${todayStr()}。请整理以下工作清单：\n\n${text}` },
-        ],
-        temperature: 0.2,
-        max_tokens: 1500,
-        response_format: { type: 'json_object' },
-      }),
-    })
-    if (!res.ok) {
-      throw new Error(ERROR_MSGS[res.status] || `网络异常或服务暂时不可用（HTTP ${res.status}），请稍后重试`)
-    }
-    const data = await res.json()
-    const content = data.choices?.[0]?.message?.content
-    if (!content) throw new Error('AI 返回内容为空，请重试')
-    const parsed = parseJsonSafe(content)
-    const list = Array.isArray(parsed.projects) ? parsed.projects : []
-    if (!list.length) {
-      renderProjStatus('empty', parsed.note || '')
-      return
-    }
-    renderConfirmProjects(list)
-  } catch (err) {
-    renderProjStatus('error', err.name === 'TypeError' ? '网络异常，请检查网络后重试' : err.message)
-  } finally {
-    projParsing = false
-    projParseBtn.disabled = false
-    projParseBtn.textContent = '整理'
-  }
-}
-
 function renderProjStatus(kind, msg = '') {
+  // 台账并入工作台后无独立状态区，状态统一走 dash-parse-status
+  if (!projParseStatusEl) return
   projParseStatusEl.innerHTML = ''
   if (kind === 'none') return
   const card = el(
@@ -1624,79 +2169,10 @@ function confirmAddProjects() {
   saveProjects(projects)
   confirmProjects = []
   projConfirmEl.innerHTML = ''
-  renderProjStatus('success', `已添加 ${added} 个项目`)
+  renderProjStatus('none')
+  showToast(`已添加 ${added} 个项目`)
   logActivity('proj-add', `新建 ${added} 个项目`)
   refreshProjects()
-}
-
-// ===== 从待办导入 =====
-function openImportPanel() {
-  const todos = loadTodos().filter((t) => !t.done)
-  projImportChecked.clear()
-  projImportMsgEl.innerHTML = ''
-  projImportTodoListEl.innerHTML = ''
-  if (!todos.length) {
-    projImportTodoListEl.append(el('li', 'proj-import-empty', '没有未完成的待办可导入'))
-    projImportConfirmBtn.disabled = true
-  } else {
-    for (const t of todos) {
-      const li = el('li')
-      const label = el('label', 'proj-import-todo')
-      const cb = el('input')
-      cb.type = 'checkbox'
-      cb.value = t.id
-      cb.addEventListener('change', () => {
-        if (cb.checked) projImportChecked.add(t.id)
-        else projImportChecked.delete(t.id)
-      })
-      label.append(cb, el('span', 'proj-import-todo-title', t.title))
-      if (t.dueDate) label.append(el('span', 'proj-import-todo-due', t.dueDate))
-      li.append(label)
-      projImportTodoListEl.append(li)
-    }
-    projImportConfirmBtn.disabled = false
-  }
-  projImportPanelEl.hidden = false
-}
-
-function confirmImportTodos() {
-  const todos = loadTodos()
-  const projects = loadProjects()
-  const now = Date.now()
-  let added = 0
-  const warns = []
-  for (const tid of projImportChecked) {
-    const t = todos.find((x) => x.id === tid)
-    if (!t) continue
-    const dup = projects.find((p) => (p.todoIds || []).includes(tid))
-    if (dup) {
-      warns.push(`该待办已关联项目『${dup.name}』：${t.title}`)
-      continue
-    }
-    projects.unshift({
-      id: 'p' + now + '-' + added,
-      name: t.title,
-      stage: 'plan',
-      deadline: t.dueDate || null,
-      owner: null,
-      risks: [],
-      todoIds: [tid],
-      createdAt: now,
-      updatedAt: now,
-    })
-    added++
-  }
-  saveProjects(projects)
-  projImportMsgEl.innerHTML = ''
-  if (added) {
-    logActivity('proj-add', `从待办导入 ${added} 个项目`)
-    projImportMsgEl.append(el('p', 'proj-import-ok', `已导入 ${added} 个待办为项目`))
-  }
-  for (const w of warns) projImportMsgEl.append(el('p', 'proj-import-warn', w))
-  projImportChecked.clear()
-  refreshProjects()
-  // 刷新面板勾选状态
-  for (const cb of projImportTodoListEl.querySelectorAll('input[type=checkbox]')) cb.checked = false
 }
 
 // ===== 项目卡片列表 =====
@@ -1714,7 +2190,7 @@ function renderProjectList() {
   projEmptyEl.hidden = list.length > 0
   projEmptyEl.innerHTML =
     projects.length === 0
-      ? emptyStateHTML('🗂️', '台账还是空的', '粘贴工作清单，点「整理」生成台账')
+      ? emptyStateHTML('<svg width="46" height="46" viewBox="0 0 48 48" fill="none" stroke="rgba(225,224,204,0.6)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="10" y="7" width="28" height="34" rx="4"/><line x1="10" y1="16" x2="38" y2="16"/><line x1="16" y1="24" x2="32" y2="24"/><line x1="16" y1="31" x2="32" y2="31"/></svg>', '台账还是空的', '粘贴工作清单，点「智能解析」自动分拣成台账')
       : emptyStateHTML('🗂️', '没有符合筛选条件的项目')
   for (const p of list) projListEl.append(projectCard(p, todos, today))
 }
@@ -1756,15 +2232,22 @@ function projectCard(p, todos, today) {
   top.append(delBtn)
   card.append(top)
 
-  // 5 段进度条：点击某段直接跳到该阶段
+  // 5 阶段时间线：点击节点直接跳到该阶段
   const stageIdx = PROJECT_STAGES.findIndex((s) => s.key === p.stage)
+  const progressPct = stageIdx <= 0 ? '0%' : `${(stageIdx / (PROJECT_STAGES.length - 1)) * 100}%`
   const bar = el('div', 'proj-stages')
+  bar.style.setProperty('--stage-progress', progressPct)
+  // 用内联样式覆盖 ::after 宽度（CSS 变量 + style 兜底）
+  const fill = el('div', 'proj-stages-fill')
+  fill.style.width = progressPct
+  bar.append(fill)
   PROJECT_STAGES.forEach((s, i) => {
-    const seg = el('button', 'proj-stage-seg' + (i < stageIdx ? ' passed' : i === stageIdx ? ' current' : ''), s.label)
-    seg.type = 'button'
-    seg.title = '点击设为「' + s.label + '」阶段'
-    seg.addEventListener('click', () => updateProject(p.id, { stage: s.key }))
-    bar.append(seg)
+    const node = el('button', 'proj-stage-node' + (i < stageIdx ? ' passed' : i === stageIdx ? ' current' : ''))
+    node.type = 'button'
+    node.title = '点击设为「' + s.label + '」阶段'
+    node.append(el('span', 'proj-stage-dot'), el('span', 'proj-stage-label', s.label))
+    node.addEventListener('click', () => updateProject(p.id, { stage: s.key }))
+    bar.append(node)
   })
   card.append(bar)
 
@@ -1868,16 +2351,6 @@ function refreshProjects() {
 }
 
 // ===== 事件绑定与初始化 =====
-projParseBtn.addEventListener('click', parseProjects)
-projSampleBtn.addEventListener('click', () => {
-  projInputEl.value = PROJ_SAMPLE_TEXT
-  projInputEl.focus()
-})
-projImportBtn.addEventListener('click', openImportPanel)
-projImportCloseBtn.addEventListener('click', () => {
-  projImportPanelEl.hidden = true
-})
-projImportConfirmBtn.addEventListener('click', confirmImportTodos)
 projOwnerFilterEl.addEventListener('change', renderProjectList)
 projSearchEl.addEventListener('input', renderProjectList)
 
@@ -1904,6 +2377,9 @@ const meetStatusEl = $('meet-status')
 const meetResultEl = $('meet-result')
 const meetHistoryListEl = $('meet-history-list')
 const meetHistoryEmptyEl = $('meet-history-empty')
+const meetHistoryToggleEl = $('meet-history-toggle')
+
+let meetHistoryExpanded = false
 
 let meetMode = 'text'
 let meetExtracting = false
@@ -1998,8 +2474,8 @@ async function extractMeeting() {
     return
   }
   if (meetExtracting) return
-  if (!API_KEY) {
-    renderMeetStatus('key')
+  if (DEMO_MODE) {
+    demoExtractMeeting(text)
     return
   }
   meetExtracting = true
@@ -2054,6 +2530,7 @@ async function extractMeeting() {
     renderMeetStatus('none')
     renderMeetingResult(meeting)
     logActivity('meeting-extract', `提炼纪要：${meeting.title}`)
+    renderOnboardingProgress()
     renderMeetHistory()
   } catch (err) {
     renderMeetStatus('error', err.name === 'TypeError' ? '网络异常，请检查网络后重试' : err.message)
@@ -2134,6 +2611,9 @@ function renderMeetingResult(m, target = meetResultEl) {
   actions.append(copyBtn, emailBtn, feishuBtn, mdBtn, syncBtn)
   head.append(titleBox, actions)
   wrap.append(head)
+
+  if (m.memoryNote) wrap.append(el('div', 'meet-memory-note', m.memoryNote))
+  prependHTML(wrap, aiProvHTML(DEMO_MODE ? 'demo' : 'real-ai', m.createdAt))
 
   // 一、结论
   const cSec = el('section', 'meet-section')
@@ -2346,12 +2826,15 @@ function syncMeetingTodos(m) {
   refreshDashboard()
 }
 
-// ===== 最近纪要（展开复用结果渲染，可删除） =====
+// ===== 最近纪要（默认折叠显示最近 2 条，「查看历史」展开全部） =====
 function renderMeetHistory() {
   const list = loadMeetings()
+  const shown = meetHistoryExpanded ? list : list.slice(0, 2)
   meetHistoryListEl.innerHTML = ''
   meetHistoryEmptyEl.hidden = list.length > 0
-  for (const m of list) {
+  meetHistoryToggleEl.hidden = list.length <= 2
+  meetHistoryToggleEl.textContent = meetHistoryExpanded ? '收起' : `查看历史（共 ${list.length} 条）`
+  for (const m of shown) {
     const li = el('li', 'meet-history-item')
     const row = el('div', 'meet-history-row')
     const info = el('div', 'meet-history-info')
@@ -2608,6 +3091,10 @@ function dashscopeTranscribe(pcmBuffer, onTick) {
 
 // ===== 事件绑定与初始化 =====
 meetExtractBtnEl.addEventListener('click', extractMeeting)
+meetHistoryToggleEl.addEventListener('click', () => {
+  meetHistoryExpanded = !meetHistoryExpanded
+  renderMeetHistory()
+})
 renderMeetHistory()
 
 // ============================================================
@@ -2623,12 +3110,16 @@ const repEmptyHintEl = $('rep-empty-hint')
 const repGenerateBtn = $('rep-generate-btn')
 const repStatusEl = $('rep-status')
 const repEditorEl = $('rep-editor')
+const repEditorCloseBtn = $('rep-editor-close')
 const repEditorMetaEl = $('rep-editor-meta')
 const repCopyBtn = $('rep-copy-btn')
 const repCopyWechatBtn = $('rep-copy-wechat')
 const repCopyEmailBtn = $('rep-copy-email')
 const repHistoryListEl = $('rep-history-list')
 const repHistoryEmptyEl = $('rep-history-empty')
+const repHistoryToggleEl = $('rep-history-toggle')
+
+let repHistoryExpanded = false
 const repUpwardBtn = $('rep-upward-btn')
 const repUpwardStatusEl = $('rep-upward-status')
 const repUpwardEditorEl = $('rep-upward-editor')
@@ -2641,6 +3132,13 @@ function setWeeklyCopyVisible(visible) {
   repCopyBtn.hidden = !visible
   repCopyWechatBtn.hidden = !visible
   repCopyEmailBtn.hidden = !visible
+}
+
+// 根据编辑器是否有内容显隐关闭按钮
+function updateRepEditorClose() {
+  if (repEditorCloseBtn) {
+    repEditorCloseBtn.hidden = !repEditorEl.value.trim()
+  }
 }
 
 function setUpwardCopyVisible(visible) {
@@ -2756,16 +3254,18 @@ repTabsEl.addEventListener('click', (e) => {
   if (b) setRepTab(b.dataset.tab)
 })
 
-// ===== 统计条 =====
+// ===== 统计条（复用共享 stats 组件） =====
 function refreshRepStats() {
   const snap = buildWeeklySnapshot()
   const hasData = loadTodos().length + loadProjects().length + loadMeetings().length > 0
-  const C = 2 * Math.PI * 26
-  $('rep-ring-num').textContent = hasData ? `${snap.completion}%` : '—'
-  $('rep-ring-fg').setAttribute('stroke-dasharray', `${((snap.completion / 100) * C).toFixed(1)} ${C.toFixed(1)}`)
-  $('rep-stat-done').textContent = String(snap.completed.length)
-  $('rep-stat-overdue').textContent = String(snap.overdue.length)
-  $('rep-stat-risks').textContent = String(snap.risks.length)
+  const ringRatio = hasData ? snap.completion / 100 : 0
+  const stats = [
+    { key: 'week', label: '本周完成度', value: hasData ? `${snap.completion}%` : '—', ring: true, ringRatio },
+    { key: 'done', label: '完成', value: snap.completed.length },
+    { key: 'overdue', label: '延期', value: snap.overdue.length },
+    { key: 'risks', label: '风险', value: snap.risks.length },
+  ]
+  renderStatsGrid($('rep-stats'), 'rep', stats)
   repEmptyHintEl.hidden = hasData
   repEditorMetaEl.textContent = `本周 ${snap.weekStart} ~ ${snap.today}`
 }
@@ -2797,8 +3297,8 @@ repGenerateBtn.addEventListener('click', () => {
 
 async function doGenerateWeekly() {
   if (repGenerating) return
-  if (!API_KEY) {
-    renderRepStatus('key')
+  if (DEMO_MODE) {
+    demoGenerateWeekly()
     return
   }
   repGenerating = true
@@ -2817,7 +3317,7 @@ async function doGenerateWeekly() {
         model: 'deepseek-chat',
         messages: [
           { role: 'system', content: weeklyPrompt },
-          { role: 'user', content: `本周数据快照：\n${JSON.stringify(snapshot)}\n请写周报。` },
+          { role: 'user', content: `${profileContextText()}\n本周数据快照：\n${JSON.stringify(snapshot)}\n请写周报。` },
         ],
         temperature: 0.5,
         max_tokens: 1200,
@@ -2842,11 +3342,15 @@ async function doGenerateWeekly() {
     repCopyBtn.hidden = false
     repCopyWechatBtn.hidden = false
     repCopyEmailBtn.hidden = false
+    updateRepEditorClose()
     renderRepHistory()
     refreshRepStats()
     updateRepGenerateBtn()
-    renderRepStatus('success', '周报已生成，可直接编辑后复制')
+    const repProvEl = document.getElementById('rep-prov')
+    if (repProvEl) repProvEl.innerHTML = aiProvHTML('real-ai')
     logActivity('report-weekly', `生成周报：${snapshot.weekStart} 起的一周`)
+    updateProfile({ reportCount: (loadProfile().reportCount || 0) + 1 })
+    renderOnboardingProgress()
   } catch (err) {
     renderRepStatus('error', err.name === 'TypeError' ? '网络异常，请检查网络后重试' : err.message)
   } finally {
@@ -2894,8 +3398,8 @@ async function doGenerateUpward() {
     return
   }
   if (repUpwardGenerating) return
-  if (!API_KEY) {
-    renderRepUpwardStatus('key')
+  if (DEMO_MODE) {
+    demoGenerateUpward(weeklyText)
     return
   }
   repUpwardGenerating = true
@@ -2913,7 +3417,7 @@ async function doGenerateUpward() {
         model: 'deepseek-chat',
         messages: [
           { role: 'system', content: upwardPrompt },
-          { role: 'user', content: `我的周报原文：\n${weeklyText}\n请改写。` },
+          { role: 'user', content: `${profileContextText()}\n我的周报原文：\n${weeklyText}\n请改写。` },
         ],
         temperature: 0.5,
         max_tokens: 600,
@@ -2939,7 +3443,10 @@ async function doGenerateUpward() {
       renderRepHistory()
     }
     renderRepUpwardStatus('success', '向上汇报已生成，可直接编辑后复制')
+    const upProvEl = document.getElementById('rep-upward-prov')
+    if (upProvEl) upProvEl.innerHTML = aiProvHTML('real-ai')
     logActivity('report-upward', '生成向上汇报')
+    renderOnboardingProgress()
   } catch (err) {
     renderRepUpwardStatus('error', err.name === 'TypeError' ? '网络异常，请检查网络后重试' : err.message)
   } finally {
@@ -3047,16 +3554,36 @@ repUpwardEmailBtn.addEventListener('click', () =>
 
 repCopyBtn.addEventListener('click', () => copyRepText(repEditorEl.value))
 repUpwardCopyBtn.addEventListener('click', () => copyRepText(repUpwardEditorEl.value))
+
+// 关闭按钮：清空周报编辑器并隐藏相关操作
+if (repEditorCloseBtn) {
+  repEditorCloseBtn.addEventListener('click', () => {
+    repEditorEl.value = ''
+    setWeeklyCopyVisible(false)
+    renderRepStatus('none')
+    const repProvEl = document.getElementById('rep-prov')
+    if (repProvEl) repProvEl.innerHTML = ''
+    updateRepEditorClose()
+    updateRepGenerateBtn()
+  })
+}
+
+// 手动输入时也同步关闭按钮显隐
+repEditorEl.addEventListener('input', updateRepEditorClose)
+
 $('rep-goto-workbench').addEventListener('click', () => {
-  $('screen-2').scrollIntoView({ behavior: 'smooth' })
+  window.location.hash = 'screen-2'
 })
 
-// ===== 历史周报（按周倒序 8 条，点击加载回编辑区） =====
+// ===== 历史周报（默认折叠显示最近 2 条，「查看历史」展开全部） =====
 function renderRepHistory() {
   const list = loadReports()
+  const shown = repHistoryExpanded ? list : list.slice(0, 2)
   repHistoryListEl.innerHTML = ''
   repHistoryEmptyEl.hidden = list.length > 0
-  for (const r of list) {
+  repHistoryToggleEl.hidden = list.length <= 2
+  repHistoryToggleEl.textContent = repHistoryExpanded ? '收起' : `查看历史（共 ${list.length} 条）`
+  for (const r of shown) {
     const li = el('li', 'rep-history-item')
     const btn = el('button', 'rep-history-row')
     btn.type = 'button'
@@ -3070,6 +3597,7 @@ function renderRepHistory() {
       repEditorMetaEl.textContent = `${r.weekStart} 起的一周`
       setWeeklyCopyVisible(!!r.weekly)
       setUpwardCopyVisible(!!r.upward)
+      updateRepEditorClose()
       renderRepStatus('none')
       renderRepUpwardStatus('none')
       setRepTab('weekly')
@@ -3081,9 +3609,21 @@ function renderRepHistory() {
 }
 
 // ===== 初始化 =====
+repHistoryToggleEl.addEventListener('click', () => {
+  repHistoryExpanded = !repHistoryExpanded
+  renderRepHistory()
+})
 renderRepHistory()
 refreshRepStats()
 updateRepGenerateBtn()
+
+// 切到周报屏时刷新数据，保证工作台最新数据同步到周报
+window.addEventListener('hashchange', () => {
+  if (window.location.hash.replace('#', '') === 'screen-6') {
+    refreshRepStats()
+    updateRepGenerateBtn()
+  }
+})
 
 // ============================================================
 // 第 7 屏：新人开挂室（书单 + 困境；困境支持输入后由 AI 生成同格式三套解法）
@@ -3099,9 +3639,10 @@ const openPanelBooksEl = $('open-panel-books')
 const openPanelDilemmasEl = $('open-panel-dilemmas')
 const openRoleFilterEl = $('open-role-filter')
 const openStageFiltersEl = $('open-stage-filters')
-const openBooksEl = $('open-books')
+const openBooksEl = $('open-book-stack')
 const openBooksEmptyEl = $('open-books-empty')
 const openDilemmaInputEl = $('open-dilemma-input')
+const openDilemmaBreakEl = $('open-dilemma-break')
 const openDilemmaTagsEl = $('open-dilemma-tags')
 const openFavOnlyEl = $('open-fav-only')
 const openDilemmaMatchEl = $('open-dilemma-match')
@@ -3125,6 +3666,8 @@ let bookStageFilter = 'all'
 let selectedDilemmaId = null
 let favOnly = false
 let selectedBookId = null // 当前选中的书（卡片高亮 + 右侧详情面板）
+let currentBookIndex = 0 // 堆叠卡片：当前展示的书在筛选列表中的下标
+let filteredBookList = [] // 当前筛选+排序后的书列表，供堆叠切换使用
 let readerBook = null // 阅读面板当前打开的书
 let readerPage = 0
 let readerPages = [] // 3 个页元素，翻页只改 transform 不改 DOM
@@ -3255,50 +3798,140 @@ function renderBooks() {
       STAGE_ORDER[a.readingStage || '入职前'] - STAGE_ORDER[b.readingStage || '入职前'] ||
       a.title.localeCompare(b.title, 'zh-Hans-CN'),
   )
+  filteredBookList = list
+  if (currentBookIndex >= list.length) currentBookIndex = 0
   openBooksEl.innerHTML = ''
   openBooksEmptyEl.hidden = list.length > 0
-  list.forEach((b, i) => {
-    const card = el(
-      'div',
-      'open-book-card' + (i % 4 === 1 || i % 4 === 2 ? ' sink' : '') + (b.id === selectedBookId ? ' selected' : ''),
-    )
-    card.dataset.id = b.id
-    card.append(el('div', 'open-book-cat', b.category))
-    // 封面：真实图 + 藏书票文字层降级（图片加载成功显示图，失败保留文字层）
-    const cover = el('div', 'open-book-cover')
-    const textLayer = el('div', 'open-book-cover-text')
-    textLayer.append(el('div', 'open-book-title', b.title), el('div', 'open-book-author', b.author))
-    cover.append(textLayer)
-    if (b.coverUrl) {
-      const img = el('img', 'open-book-cover-img')
-      img.alt = b.title
-      img.loading = 'lazy'
-      img.addEventListener('load', () => {
-        img.style.display = 'block'
-        textLayer.style.display = 'none'
-      })
-      img.addEventListener('error', () => img.remove())
-      img.src = b.coverUrl
-      cover.append(img)
-    }
-    const status = statusMap[b.id] || b.status || 'want'
-    const dot = el('button', 'open-book-dot dot-' + status, status === 'read' ? '✓' : '')
-    dot.type = 'button'
-    dot.title = `${DOT_LABELS[status]}（点击切换）`
-    dot.setAttribute('aria-label', '切换阅读状态：' + DOT_LABELS[status])
-    dot.addEventListener('click', (e) => {
-      e.stopPropagation()
-      cycleBookStatus(b)
+  if (!list.length) return
+  openBooksEl.hidden = false
+
+  const cur = list[currentBookIndex]
+
+  // 堆叠舞台：左右各露出 3 本书脊，环形循环；左右切换箭头在舞台外侧
+  const stageWrap = el('div', 'open-stack-stage-wrap')
+  const stage = el('div', 'open-stack-stage')
+  const PEEK = 3
+  const n = list.length
+
+  // 左侧书脊：从远到近（-3 → -1）
+  for (let k = PEEK; k >= 1; k--) {
+    const idx = (currentBookIndex - k + n) % n
+    const peek = buildStackCard(list[idx])
+    peek.classList.add('peek')
+    peek.style.setProperty('--peek', -k)
+    peek.style.setProperty('--peek-abs', k)
+    peek.style.zIndex = 10 - k
+    peek.dataset.idx = idx
+    peek.addEventListener('click', () => {
+      currentBookIndex = idx
+      renderBooks()
     })
-    card.append(cover, dot)
-    card.addEventListener('click', () => selectBook(b))
-    card.addEventListener('mouseenter', () => {
-      cancelHideDetail()
-      showDetailPanel(b, card)
-    })
-    card.addEventListener('mouseleave', scheduleHideDetail)
-    openBooksEl.append(card)
+    stage.append(peek)
+  }
+
+  const main = buildStackCard(cur)
+  main.classList.add('main')
+  const status = statusMap[cur.id] || cur.status || 'want'
+  const dot = el('button', 'open-book-dot dot-' + status, status === 'read' ? '✓' : '')
+  dot.type = 'button'
+  dot.title = `${DOT_LABELS[status]}（点击切换）`
+  dot.setAttribute('aria-label', '切换阅读状态：' + DOT_LABELS[status])
+  dot.addEventListener('click', (e) => {
+    e.stopPropagation()
+    cycleBookStatus(cur)
   })
+  main.append(dot)
+  stage.append(main)
+
+  // 右侧书脊：从近到远（+1 → +3）
+  for (let k = 1; k <= PEEK; k++) {
+    const idx = (currentBookIndex + k) % n
+    const peek = buildStackCard(list[idx])
+    peek.classList.add('peek')
+    peek.style.setProperty('--peek', k)
+    peek.style.setProperty('--peek-abs', k)
+    peek.style.zIndex = 10 - k
+    peek.dataset.idx = idx
+    peek.addEventListener('click', () => {
+      currentBookIndex = idx
+      renderBooks()
+    })
+    stage.append(peek)
+  }
+
+  const prevBtn = el('button', 'open-stack-arrow open-stack-arrow-prev', '‹')
+  prevBtn.type = 'button'
+  prevBtn.setAttribute('aria-label', '上一本')
+  prevBtn.addEventListener('click', () => stepBook(-1))
+  const nextBtn = el('button', 'open-stack-arrow open-stack-arrow-next', '›')
+  nextBtn.type = 'button'
+  nextBtn.setAttribute('aria-label', '下一本')
+  nextBtn.addEventListener('click', () => stepBook(1))
+
+  stageWrap.append(prevBtn, stage, nextBtn)
+  openBooksEl.append(stageWrap)
+
+  // 信息区：左侧标签/书名/作者/概括/评价，右侧立即阅读
+  const info = el('div', 'open-stack-info')
+  const body = el('div', 'open-stack-body')
+  const tags = el('div', 'open-stack-tags')
+  const tagList = [cur.category, PRIO_LABELS[cur.priority] || cur.priority]
+  for (const r of cur.forRoles || []) if (r !== '全部') tagList.push(r)
+  if (cur.readingStage) tagList.push(cur.readingStage)
+  for (const t of tagList) tags.append(el('span', 'open-stack-tag', t))
+  body.append(tags)
+  body.append(el('h3', 'open-stack-title', cur.title))
+  body.append(el('p', 'open-stack-author', cur.author))
+  body.append(el('p', 'open-stack-summary', cur.summary || ''))
+  const rev = (cur.reviews || [])[0]
+  if (rev) {
+    const revBox = el('div', 'open-stack-review')
+    revBox.append(el('span', 'open-stack-review-label', '豆瓣评价'))
+    revBox.append(el('p', 'open-stack-review-text', '“' + (rev.text || '') + '”'))
+    revBox.append(el('span', 'open-stack-review-user', '—— ' + (rev.user || '豆瓣用户')))
+    body.append(revBox)
+  }
+  const actions = el('div', 'open-stack-actions')
+  const readBtn = el('button', 'btn-primary open-stack-read', '立即阅读')
+  readBtn.type = 'button'
+  readBtn.addEventListener('click', () => {
+    window.open(`https://weread.qq.com/web/search/books?keyword=${encodeURIComponent(cur.title)}`, '_blank')
+  })
+  actions.append(readBtn)
+  info.append(body, actions)
+  openBooksEl.append(info)
+}
+
+// 单张堆叠卡（封面 + 降级文字层），不含交互
+function buildStackCard(b) {
+  const card = el('div', 'open-stack-card')
+  card.dataset.id = b.id
+  const cover = el('div', 'open-book-cover')
+  const textLayer = el('div', 'open-book-cover-text')
+  textLayer.append(el('div', 'open-book-title', b.title), el('div', 'open-book-author', b.author))
+  cover.append(textLayer)
+  if (b.coverUrl) {
+    const img = el('img', 'open-book-cover-img')
+    img.alt = b.title
+    img.loading = 'eager'
+    img.addEventListener('load', () => {
+      img.style.display = 'block'
+      textLayer.style.display = 'none'
+    })
+    img.addEventListener('error', () => img.remove())
+    img.src = `${import.meta.env.BASE_URL}${b.coverUrl}`
+    cover.append(img)
+  }
+  card.append(cover)
+  return card
+}
+
+// 堆叠左右切换：上一本 / 下一本（环形）
+function stepBook(dir) {
+  const n = filteredBookList.length
+  if (!n) return
+  currentBookIndex = (currentBookIndex + dir + n) % n
+  renderBooks()
 }
 
 // 圆点循环：想读 → 在读 → 已读 → 想读，只写 localStorage，绝不写回 books.json
@@ -3364,7 +3997,7 @@ function showDetailPanel(b, anchor) {
       textFallback.style.display = 'none'
     })
     img.addEventListener('error', () => img.remove())
-    img.src = b.coverUrl
+    img.src = `${import.meta.env.BASE_URL}${b.coverUrl}`
     coverBox.append(img)
   }
   const info = el('div', 'open-panel-info')
@@ -3507,6 +4140,7 @@ openDetailPanelEl.addEventListener('mouseleave', scheduleHideDetail)
 
 openRoleFilterEl.addEventListener('change', () => {
   bookRoleFilter = openRoleFilterEl.value
+  currentBookIndex = 0
   renderBooks()
 })
 openStageFiltersEl.addEventListener('click', (e) => {
@@ -3514,10 +4148,23 @@ openStageFiltersEl.addEventListener('click', (e) => {
   if (!b) return
   bookStageFilter = b.dataset.stage
   document.querySelectorAll('.open-stage-btn').forEach((x) => x.classList.toggle('active', x === b))
+  currentBookIndex = 0
   renderBooks()
 })
 
 // ===== 困境 =====
+
+function gotoJobDecompose(jobName) {
+  window.location.hash = 'screen-3'
+  if (jobName) {
+    const input = $('jd-composer-input')
+    if (input) {
+      input.value = jobName
+      input.focus()
+    }
+  }
+}
+
 function renderDilemmaTags() {
   const fav = loadDilemmaFav()
   const all = getAllDilemmas()
@@ -3527,6 +4174,8 @@ function renderDilemmaTags() {
     openDilemmaTagsEl.append(el('span', 'open-tags-empty', '还没有收藏的困境'))
     return
   }
+  // 渲染一份原始序列，再克隆一份用于无缝轮播（事件委托在容器上，克隆项同样可点）
+  const frag = document.createDocumentFragment()
   for (const d of list) {
     const tag = el(
       'button',
@@ -3534,10 +4183,19 @@ function renderDilemmaTags() {
       (d.ai ? 'AI · ' : '') + (fav.includes(d.id) ? '☆ ' : '') + d.title,
     )
     tag.type = 'button'
-    tag.addEventListener('click', () => selectDilemma(d.id))
-    openDilemmaTagsEl.append(tag)
+    tag.dataset.id = d.id
+    frag.append(tag)
   }
+  openDilemmaTagsEl.append(frag)
+  // 始终克隆一份用于无缝轮播（单条也克隆，保证 -50% 平移闭环）
+  openDilemmaTagsEl.append(frag.cloneNode(true))
 }
+
+// 困境库轮播：事件委托，克隆项也能点击
+openDilemmaTagsEl.addEventListener('click', (e) => {
+  const t = e.target.closest('.open-dilemma-tag')
+  if (t && t.dataset.id) selectDilemma(t.dataset.id)
+})
 
 function selectDilemma(id) {
   selectedDilemmaId = id
@@ -3554,6 +4212,12 @@ function renderDilemmaDetail(d) {
   openDilemmaDetailEl.innerHTML = ''
   const wrap = el('div', 'open-solutions')
   wrap.append(el('h3', 'open-dilemma-title', d.title))
+
+  const dLead = memoryLeadIn()
+  if (dLead) wrap.append(el('div', 'open-memory-note', dLead))
+  const dKind = DEMO_MODE ? 'demo' : d.ai ? 'real-ai' : 'real-curated'
+  prependHTML(wrap, aiProvHTML(dKind))
+
   const cols = el('div', 'open-solution-cols')
   for (const s of d.solutions) {
     const card = el('div', 'open-solution-card')
@@ -3610,11 +4274,23 @@ openDilemmaInputEl.addEventListener('input', () => {
     })
     openDilemmaMatchEl.append(btn)
   }
-  // AI 拆解入口：无论有没有本地匹配，都允许按用户原话生成
-  const aiBtn = el('button', 'open-dilemma-ai-btn', '✨ 让 AI 拆解「' + (kw.length > 12 ? kw.slice(0, 12) + '…' : kw) + '」')
-  aiBtn.type = 'button'
-  aiBtn.addEventListener('click', () => generateCustomDilemma(kw))
-  openDilemmaMatchEl.append(aiBtn)
+})
+
+// 输入框内「破局」按钮 + 回车：按当前输入让 AI 拆解
+function breakDilemma() {
+  const kw = openDilemmaInputEl.value.trim()
+  if (!kw) {
+    openDilemmaInputEl.focus()
+    return
+  }
+  generateCustomDilemma(kw)
+}
+openDilemmaBreakEl.addEventListener('click', breakDilemma)
+openDilemmaInputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    breakDilemma()
+  }
 })
 
 // ===== AI 拆解自定义困境（DeepSeek，输出与 dilemmas.json 完全同格式） =====
@@ -3682,8 +4358,8 @@ async function generateCustomDilemma(text) {
   const ask = (text || openDilemmaInputEl.value || '').trim()
   if (!ask) return
   dilemmaLastAsk = ask
-  if (!API_KEY) {
-    renderDilemmaStatus('key')
+  if (DEMO_MODE) {
+    demoCustomDilemma(ask)
     return
   }
   dilemmaGenerating = true
@@ -3733,6 +4409,9 @@ async function generateCustomDilemma(text) {
     openDilemmaInputEl.value = ''
     openDilemmaMatchEl.innerHTML = ''
     logActivity('dilemma-ai', `AI 拆解困境：${d.title}`)
+    const p = loadProfile()
+    updateProfile({ dilemmasTackled: Array.from(new Set([...(p.dilemmasTackled || []), d.title])).slice(-10) })
+    renderOnboardingProgress()
   } catch (err) {
     renderDilemmaStatus('error', err.name === 'TypeError' ? '网络异常，请检查网络后重试' : err.message)
   } finally {
@@ -3764,12 +4443,16 @@ const jdChatEl = $('jd-chat')
 const jdChatBoxEl = $('jd-chat-box')
 const jdChatInputEl = $('jd-chat-input')
 const jdChatSendEl = $('jd-chat-send')
+const jdChatMetaEl = $('jd-chat-meta')
+const jdChatSaveDilemmaBtnEl = $('jd-chat-save-dilemma')
+const jdChatGotoOpenBtnEl = $('jd-chat-goto-open')
 
 let jdParsing = false
 let jdChatMessages = [] // 对话历史只保留在内存，不落 localStorage
 let jdChatSystem = '' // Prompt③ + 本次岗位地图 JSON
+let jdLastJobName = '' // 最近一次拆解的岗位名（用于「存为困境」关联 relatedJobId）
+let jdChatLastPair = null // 最近一组问答 {question, answer}，供「存为困境」按钮使用
 let jdChatBusy = false
-let jdLastJobName = ''
 
 // ===== 一键拆解：按输入内容自动路由 =====
 // 含换行或超过 40 字 → 视为 JD 原文，走 parseJd；否则视为岗位名，走 generate
@@ -3800,16 +4483,33 @@ function routeBreakdown() {
 // 上传截图 → 触发隐藏的 file input
 jdUploadBtn.addEventListener('click', () => jdOcrFileEl.click())
 
+// 演示模式：上传任意截图后自动填入一段示例 JD，无需配置智谱 Key
+const DEMO_JD_TEXT = `产品经理（应届生）
+岗位职责：
+1. 负责需求调研、用户访谈，输出需求文档；
+2. 跟进产品迭代，协调设计、开发、测试资源；
+3. 分析产品核心数据，输出周报与复盘；
+4. 参与竞品分析与行业研究。
+任职要求：
+1. 本科及以上学历，计算机/心理学/商科优先；
+2. 具备优秀的逻辑思维与沟通能力；
+3. 有实习或项目经验者优先。`
+
 // ===== 截图提字（智谱 GLM-4V-Flash） =====
 if (!ZHIPU_API_KEY) {
-  jdUploadBtn.disabled = true
-  jdUploadBtn.title = '需配置 VITE_ZHIPU_API_KEY'
+  jdUploadBtn.title = '演示模式：上传截图将自动填入示例 JD'
 }
 
 jdOcrFileEl.addEventListener('change', async (e) => {
   const file = e.target.files[0]
   e.target.value = ''
   if (!file) return
+  // 演示模式：无智谱 Key 时直接填入示例 JD
+  if (!ZHIPU_API_KEY) {
+    inputEl.value = DEMO_JD_TEXT
+    renderJdStatus('ocr-success')
+    return
+  }
   renderJdStatus('ocr-loading')
   try {
     const dataUrl = await compressImage(file, 1280, 0.8)
@@ -3903,8 +4603,8 @@ async function parseJd() {
     return
   }
   if (jdParsing) return
-  if (!API_KEY) {
-    renderJdStatus('key')
+  if (DEMO_MODE) {
+    demoParseJd(text)
     return
   }
   jdParsing = true
@@ -4056,56 +4756,27 @@ function renderJdResult(job) {
   for (const m of MODULES) {
     const items = Array.isArray(job[m.key]) ? job[m.key] : []
     if (!items.length) continue
-    const card = el('section', 'module-card')
+    const card = el('section', 'module-card module-card--' + m.key)
     const headBtn = el('button', 'module-head')
     headBtn.type = 'button'
-    headBtn.append(el('span', 'module-title', m.title), el('span', 'module-count', String(items.length)))
+    const titleSpan = el('span', 'module-title', m.title)
+    if (m.type === 'checklist') {
+      const checkIcon = document.createElement('span')
+      checkIcon.innerHTML = '<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5L6.5 12L13 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      titleSpan.append(checkIcon)
+    }
+    headBtn.append(titleSpan, el('span', 'module-count', String(items.length)))
     headBtn.addEventListener('click', () => card.classList.toggle('collapsed'))
     const collapse = el('div', 'module-collapse')
     const body = el('div', 'module-body')
-    if (m.type === 'tags') {
-      const tagGrid = el('div', 'tag-grid')
-      for (const it of items) {
-        const [name, desc] = splitPair(it)
-        const tag = el('div', 'tag-card')
-        if (name) tag.append(el('strong', 'tag-name', name))
-        if (desc) tag.append(el('span', 'tag-desc', desc))
-        tagGrid.append(tag)
-      }
-      body.append(tagGrid)
-    } else if (m.type === 'checklist') {
-      const ul = el('ul', 'module-list')
-      for (const it of items) {
-        const li = el('li')
-        const label = el('label', 'check-item')
-        const cb = el('input')
-        cb.type = 'checkbox'
-        label.append(cb, el('span', 'check-text', it))
-        li.append(label)
-        ul.append(li)
-      }
-      body.append(ul)
-    } else {
-      const ul = el('ul', 'module-list')
-      for (const it of items) {
-        const li = el('li')
-        if (m.type === 'collab') {
-          const [role, desc] = splitPair(it)
-          if (role) li.append(el('strong', 'collab-role', role + '：'))
-          li.append(el('span', '', desc || it))
-        } else {
-          li.append(el('span', '', it))
-        }
-        ul.append(li)
-      }
-      body.append(ul)
-    }
+    populateModuleBody(body, m, items)
     collapse.append(body)
     card.append(headBtn, collapse)
     grid.append(card)
   }
   wrap.append(grid)
   jdResultEl.append(wrap)
+  requestAnimationFrame(() => syncBottomRowHeight())
 }
 
 // ===== 追问对话（DeepSeek 流式） =====
@@ -4183,6 +4854,9 @@ async function sendJdChat(question) {
       aiMsg.textContent = '（AI 没有返回内容，请重试）'
     }
     jdChatMessages.push({ role: 'assistant', content: full.trim() })
+    // 暴露最近一组问答给「存为困境」按钮
+    jdChatLastPair = { question: q, answer: full.trim() }
+    jdChatMetaEl.hidden = false
   } catch (err) {
     aiMsg.textContent = err.name === 'TypeError' ? '网络异常，请检查网络后重试' : err.message || '发送失败，请重试'
   } finally {
@@ -4199,6 +4873,45 @@ jdChatSendEl.addEventListener('click', () => sendJdChat())
 jdChatInputEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') sendJdChat()
 })
+
+// ===== 屏3 → 屏7 打通：追问结果「存为困境」=====
+function saveJdChatAsDilemma() {
+  if (!jdChatLastPair) {
+    showToast('还没有可以保存的问答')
+    return
+  }
+  const { question, answer } = jdChatLastPair
+  const list = loadCustomDilemmas()
+  // 同岗位同问题去重
+  const dup = list.find((d) => d.relatedJobId === jdLastJobName && d.title === question.slice(0, 40))
+  if (dup) {
+    showToast('已存过这条问答了')
+    return
+  }
+  const summary = answer.replace(/\s+/g, ' ').trim().slice(0, 80) + (answer.length > 80 ? '…' : '')
+  const dilemma = {
+    id: `custom-${Date.now()}`,
+    title: question.slice(0, 40) + (question.length > 40 ? '…' : ''),
+    tags: ['岗位追问', jdLastJobName || '通用'],
+    solutions: [{ summary, detail: answer, source: '岗位追问' }],
+    relatedJobId: jdLastJobName,
+    ai: true,
+    createdAt: Date.now(),
+  }
+  list.unshift(dilemma)
+  saveCustomDilemmas(list)
+  showToast('已存为困境，去开挂室看看')
+  jdChatGotoOpenBtnEl.hidden = false
+  logActivity('dilemma-save', `岗位追问存为困境：${question.slice(0, 20)}`)
+}
+
+function gotoOpenScreen() {
+  window.location.hash = 'screen-7'
+  setOpenTab('dilemmas')
+}
+
+jdChatSaveDilemmaBtnEl.addEventListener('click', saveJdChatAsDilemma)
+jdChatGotoOpenBtnEl.addEventListener('click', gotoOpenScreen)
 
 // ============================================================
 // 第 8 屏：数据管理（导出 / 导入 / 清空，覆盖全部用户数据 key）
@@ -4319,8 +5032,9 @@ dataClearBtn.addEventListener('click', () => {
 // ============================================================
 const ONBOARDED_KEY = 'odb_onboarded'
 
-function maybeShowOnboarding() {
-  if (localStorage.getItem(ONBOARDED_KEY)) return
+function openOnboarding() {
+  const existing = document.querySelector('.onboard-overlay')
+  if (existing) existing.remove()
   const steps = [
     {
       icon: '🧭',
@@ -4342,6 +5056,8 @@ function maybeShowOnboarding() {
 
   const overlay = el('div', 'onboard-overlay')
   const card = el('div', 'onboard-card')
+  const progressHost = el('div', 'onb-progress-host')
+  progressHost.id = 'onb-progress-host'
   const icon = el('div', 'onboard-step-icon')
   const title = el('h3', 'onboard-step-title')
   const text = el('p', 'onboard-step-text')
@@ -4390,16 +5106,181 @@ function maybeShowOnboarding() {
   })
 
   btnRow.append(skipBtn, mainBtn)
-  card.append(icon, title, text, dots, btnRow)
+  card.append(progressHost, icon, title, text, dots, btnRow)
   overlay.append(card)
   document.body.append(overlay)
+  renderOnboardingProgress()
   render()
 }
 
-setTimeout(maybeShowOnboarding, 600)
+// 新人指引已删除：不再自动弹出，也不再从登陆进度卡片触发
 
 // ============================================================
 // 初始化收口：全部声明完成后,首次刷新工作台
 // （refreshStats 读台账数据,必须在 PROJECTS_KEY 等声明之后调用）
 // ============================================================
+seedDemoLedger()
 refreshDashboard()
+
+// ============================================================
+// 全局「我的收藏」抽屉（导航 ★ 收藏 入口；聚合岗位/困境/书单）
+// 存储仍用各自 key（preset_favorites / job_library / odb_dilemma_fav /
+// odb_book_status），不迁移数据，只在展示层聚合
+// ============================================================
+const favDrawerEl = $('fav-drawer')
+const favDrawerMaskEl = $('fav-drawer-mask')
+const favDrawerBodyEl = $('fav-drawer-body')
+
+function collectAllFavorites() {
+  // 岗位：AI 拆解收藏 + 预置岗位收藏
+  const presetIds = getPresetFavorites()
+  const jobs = [
+    ...loadLibrary().map((j) => ({ id: j.id, title: j.name, sub: 'AI 拆解' })),
+    ...jobsData.jobs.filter((j) => presetIds.includes(j.id)).map((j) => ({ id: j.id, title: j.name, sub: '岗位库' })),
+  ]
+  // 困境
+  const favIds = loadDilemmaFav()
+  const dilemmas = getAllDilemmas()
+    .filter((d) => favIds.includes(d.id))
+    .map((d) => ({ id: d.id, title: d.title, sub: d.ai ? 'AI 困境' : '困境' }))
+  // 书（只统计用户主动标记过的想读/在读；books.json 默认 status 不算收藏）
+  const statusMap = loadBookStatus()
+  const books = booksData.books
+    .filter((b) => ['want', 'reading'].includes(statusMap[b.id]))
+    .map((b) => ({ id: b.id, title: b.title, sub: statusMap[b.id] === 'reading' ? '在读' : '想读' }))
+  return { jobs, dilemmas, books }
+}
+
+function renderFavDrawer() {
+  const { jobs, dilemmas, books } = collectAllFavorites()
+  favDrawerBodyEl.innerHTML = ''
+
+  const sections = [
+    {
+      icon: '🧭',
+      title: `岗位 · ${jobs.length}`,
+      items: jobs,
+      action: (it) => gotoJobDecompose(it.title),
+    },
+    {
+      icon: '🧩',
+      title: `困境 · ${dilemmas.length}`,
+      items: dilemmas,
+      action: (it) => {
+        setOpenTab('dilemmas')
+        window.location.hash = 'screen-7'
+        selectDilemma(it.id)
+      },
+    },
+    {
+      icon: '📚',
+      title: `书单 · ${books.length}`,
+      items: books,
+      action: () => {
+        setOpenTab('books')
+        window.location.hash = 'screen-7'
+      },
+    },
+  ]
+
+  let total = 0
+  for (const sec of sections) {
+    total += sec.items.length
+    if (!sec.items.length) continue
+    favDrawerBodyEl.append(el('h4', 'fav-sec-title', `${sec.icon} ${sec.title}`))
+    const list = el('div', 'fav-sec-list')
+    for (const it of sec.items) {
+      const row = el('button', 'fav-item')
+      row.type = 'button'
+      row.append(el('span', 'fav-item-title', it.title))
+      row.append(el('span', 'fav-item-sub', it.sub))
+      row.addEventListener('click', () => {
+        closeFavDrawer()
+        sec.action(it)
+      })
+      list.append(row)
+    }
+    favDrawerBodyEl.append(list)
+  }
+
+  if (total === 0) {
+    favDrawerBodyEl.append(
+      el('p', 'fav-empty', '还没有收藏。\n岗位库、困境解法、书单里的 ☆ 都会汇总到这里。'),
+    )
+  }
+}
+
+function openFavDrawer() {
+  renderFavDrawer()
+  favDrawerMaskEl.hidden = false
+  requestAnimationFrame(() => favDrawerEl.classList.add('open'))
+  document.body.style.overflow = 'hidden'
+}
+
+function closeFavDrawer() {
+  favDrawerEl.classList.remove('open')
+  favDrawerMaskEl.hidden = true
+  document.body.style.overflow = ''
+}
+
+$('fav-drawer-close').addEventListener('click', closeFavDrawer)
+favDrawerMaskEl.addEventListener('click', closeFavDrawer)
+window.addEventListener('open-fav-drawer', openFavDrawer)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && favDrawerEl.classList.contains('open')) closeFavDrawer()
+})
+
+// ===== 首屏自动展示示例拆解（激活 / aha：reviewer 一进来就看到 AI 价值）=====
+// demo 模式下，若结果区为空则自动渲染一份完整岗位拆解当「门面」，并预填输入框保持连贯；
+// 真实 API 模式（配置了 Key）不自动跑，避免无谓的请求。用户一旦自己操作即被正常覆盖。
+function seedDemoLedger() {
+  if (!DEMO_MODE) return
+  const todos = loadTodos()
+  const projects = loadProjects()
+  if (todos.length || projects.length) return // 已有数据不覆盖
+  const ws = mondayStart().getTime()
+  const h = (n) => ws + n * 3600000
+  const seedTodos = [
+    { id: 's1', title: '梳理本周产品需求池，输出优先级清单', dueDate: addDaysStr(2), priority: '高', note: '示例台账', done: true, createdAt: h(10), doneAt: h(20) },
+    { id: 's2', title: '跟进 V2.3 上线后核心指标波动，写一页复盘', dueDate: addDaysStr(-1), priority: '中', note: '示例台账', done: false, createdAt: h(12) },
+    { id: 's3', title: '约 mentor 做一次 1:1 对齐入职方向', dueDate: addDaysStr(6), priority: '中', note: '示例台账', done: false, createdAt: h(14) },
+  ]
+  saveTodos(seedTodos)
+  saveProjects([
+    { id: 'p-seed-1', name: '需求优先级看板重构', stage: '进行中', deadline: addDaysStr(7), owner: '我', risks: ['需求方临时加塞，排期可能被冲'], todoIds: [], createdAt: h(8), updatedAt: h(8) },
+  ])
+  if (typeof renderTodoList === 'function') renderTodoList()
+  if (typeof renderProjectList === 'function') renderProjectList()
+  if (typeof refreshStats === 'function') refreshStats()
+}
+
+function autoShowcaseDemo() {
+  if (!DEMO_MODE) return
+  if (!resultEl || resultEl.children.length > 0) return
+  const showcase = '产品经理'
+  if (inputEl) inputEl.value = showcase
+  seedDemoLedger()
+  demoJobBreakdown(showcase)
+}
+// autoShowcaseDemo() // 默认不自动展示，输入框下方直接显示岗位库
+
+// ===== 登陆进度矩形：渲染真实进度（旧顶部入口条已移除，保留函数供内部调用）=====
+function renderEntryProgress() {
+  const landing = loadLibrary().length > 0 || !!loadProfile().landingJob
+  const ledger = loadTodos().length + loadProjects().length > 0
+  const minutes = loadMeetings().length > 0
+  const report = !!loadReports().find((r) => r.weekly)
+  const done = [landing, ledger, minutes, report].filter(Boolean).length
+  const pct = Math.round((done / 4) * 100)
+  const fill = document.querySelector('.entry-portal-progress .onb-trunk-fill')
+  if (fill) fill.style.width = pct + '%'
+}
+renderEntryProgress()
+
+// 功能屏顶部入口条：点击跳转对应屏
+document.querySelectorAll('.entry-portal[data-target]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const target = btn.getAttribute('data-target')
+    if (target) window.location.hash = target
+  })
+})
