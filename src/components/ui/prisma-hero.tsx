@@ -151,7 +151,7 @@ const PrismaHero = () => {
         <div className="noise-overlay pointer-events-none absolute inset-0 opacity-[0.7] mix-blend-overlay" />
 
         {/* Gradient overlay：底部渐隐为纯黑，与下方 screen-2 的纯黑背景无缝衔接，无可见边界 */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black" />
+        <div className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-b from-black/30 via-transparent to-black" />
 
         {/* 左上角品牌名：DengluDao，米白色，18px */}
         <div className="absolute left-4 top-4 z-20 sm:left-6 sm:top-6 md:left-10 md:top-10">
@@ -181,7 +181,7 @@ const PrismaHero = () => {
         {/* 全站导航已抽到 FloatingNav 组件（独立于 hero，可拖拽 / 锁定） */}
 
         {/* Hero content：slogan + 登岛按钮水平居中 */}
-        <div className="absolute bottom-0 left-0 right-0 px-4 pb-6 sm:px-6 sm:pb-10 md:px-10 md:pb-14 lg:pb-20">
+        <div className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-6 sm:px-6 sm:pb-10 md:px-10 md:pb-14 lg:pb-20">
           <div className="flex flex-col items-center gap-5 pb-6 text-center lg:pb-10">
             <motion.p
               initial={{ y: 20, opacity: 0 }}
