@@ -5416,11 +5416,11 @@ function seedDemoExperience() {
   seedDemoLedger()
   seedDemoMeetings()
   seedDemoWeekly()
-  // 岗位拆解屏：直接展示一份完整示例拆解
-  if (resultEl && resultEl.children.length === 0 && inputEl) {
-    inputEl.value = '产品经理'
-    demoJobBreakdown('产品经理')
-  }
+  // 岗位拆解屏：不再自动展开完整示例拆解，只保留岗位库让用户点击具体岗位后拆解
+  // if (resultEl && resultEl.children.length === 0 && inputEl) {
+  //   inputEl.value = '产品经理'
+  //   demoJobBreakdown('产品经理')
+  // }
   // 会议纪要屏：直接展示一条示例纪要
   const meets = loadMeetings()
   if (meets.length && meetResultEl && meetResultEl.children.length === 0) {

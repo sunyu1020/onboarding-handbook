@@ -92,7 +92,8 @@ const PrismaHero = () => {
 
   // 带 cache-busting 的资源路径，强制微信/浏览器刷新缓存
   const BASE_URL = import.meta.env.BASE_URL
-  const POSTER_URL = `${BASE_URL}hero-poster.png?v=2`
+  const POSTER_URL = `${BASE_URL}hero-poster.webp?v=2`
+  const POSTER_FALLBACK_URL = `${BASE_URL}hero-poster.png?v=2`
   const VIDEO_URL = `${BASE_URL}hero-bg.mp4?v=2`
 
   useEffect(() => {
@@ -147,12 +148,24 @@ const PrismaHero = () => {
     <section id="screen-1" className="screen prisma-hero-screen h-screen w-full">
       <div className="relative h-full w-full overflow-hidden rounded-2xl md:rounded-[2rem]">
 
-        {/* 第 0 层：CSS background-image，最可靠兜底，永不消失。
-            即使 <img> 加载失败、JS 报错、网络中断，这层背景始终存在，首屏绝不黑屏。 */}
+        {/* 第 0 层：纯 CSS 生成的暗色星空/海面纹理兜底，不依赖任何图片资源，
+            即使网络完全中断、图片全部失败，首屏也绝不黑屏。 */}
         <div
           className="absolute inset-0 z-0 bg-[#050505]"
           style={{
-            backgroundImage: `url("${POSTER_URL}")`,
+            background: `
+              radial-gradient(ellipse at 20% 30%, rgba(225,224,204,0.12) 0%, transparent 55%),
+              radial-gradient(ellipse at 80% 70%, rgba(225,224,204,0.08) 0%, transparent 50%),
+              linear-gradient(135deg, #0a0a0a 0%, #050505 40%, #0c0c0c 100%)
+            `,
+          }}
+        />
+
+        {/* 第 1 层：CSS background-image 海报兜底（极小体积 webp，微信/弱网友好）。 */}
+        <div
+          className="absolute inset-0 z-0 bg-[#050505]"
+          style={{
+            backgroundImage: `url("${POSTER_URL}"), url("${POSTER_FALLBACK_URL}")`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat',
@@ -164,15 +177,23 @@ const PrismaHero = () => {
           />
         </div>
 
-        {/* 第 1 层：<img> 高清海报，加载成功则盖在 CSS 背景之上，失败时透明但不消失（不会露出黑底）。 */}
+        {/* 第 2 层：<img> 高清海报，加载成功则盖在 CSS 背景之上，失败时自动 fallback 到 PNG。 */}
         <img
           src={POSTER_URL}
           alt=""
           className={`absolute inset-0 z-[1] h-full w-full object-cover transition-opacity duration-700 ${posterFailed ? 'opacity-0' : 'opacity-100'}`}
-          onError={() => setPosterFailed(true)}
+          onError={(e) => {
+            // 如果 webp 失败（极少数旧内核），尝试 PNG fallback
+            const img = e.currentTarget
+            if (img.src !== POSTER_FALLBACK_URL) {
+              img.src = POSTER_FALLBACK_URL
+            } else {
+              setPosterFailed(true)
+            }
+          }}
         />
 
-        {/* 第 2 层：视频，真正开始播放后再淡入盖住海报 */}
+        {/* 第 3 层：视频，真正开始播放后再淡入盖住海报 */}
         <video
           ref={videoRef}
           autoPlay
@@ -181,7 +202,7 @@ const PrismaHero = () => {
           playsInline
           preload="auto"
           poster={POSTER_URL}
-          className={`absolute inset-0 z-[2] h-full w-full object-cover transition-opacity duration-700 ${videoReady ? 'opacity-100' : 'opacity-0'}`}
+          className={`absolute inset-0 z-[3] h-full w-full object-cover transition-opacity duration-700 ${videoReady ? 'opacity-100' : 'opacity-0'}`}
           src={VIDEO_URL}
         />
 
