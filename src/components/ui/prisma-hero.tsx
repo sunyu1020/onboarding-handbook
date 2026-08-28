@@ -1,5 +1,5 @@
 import { motion, useInView } from "framer-motion";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type React from "react";
 interface WordsPullUpProps {
   text: string;
@@ -86,17 +86,64 @@ const PrismaHero = () => {
     window.location.hash = '#screen-3'
   }
 
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [videoFailed, setVideoFailed] = useState(false)
+
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v) return
+    // 移动端/微信内置浏览器常拦截 autoplay，主动尝试播放一次
+    const tryPlay = () => {
+      const p = v.play()
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {
+          // 被浏览器策略阻止时，备用背景已在 DOM 下层兜底
+        })
+      }
+    }
+    tryPlay()
+    v.addEventListener('canplay', tryPlay)
+    const onError = () => setVideoFailed(true)
+    v.addEventListener('error', onError)
+    // 若 4 秒内仍未开始播放（常见于弱网/微信拦截），主动隐藏 video，露出备用背景
+    const failTimer = window.setTimeout(() => {
+      if (v.readyState < 3 && v.currentTime <= 0) setVideoFailed(true)
+    }, 4000)
+    return () => {
+      window.clearTimeout(failTimer)
+      v.removeEventListener('canplay', tryPlay)
+      v.removeEventListener('error', onError)
+    }
+  }, [])
+
   return (
     <section id="screen-1" className="screen prisma-hero-screen h-screen w-full">
       <div className="relative h-full w-full overflow-hidden rounded-2xl md:rounded-[2rem]">
-        
-        {/* Background video */}
+
+        {/* 备用背景层：在视频无法加载/自动播放被拦截时兜底，移动端始终可见背景 */}
+        <div
+          className="absolute inset-0 z-0"
+          style={{
+            backgroundColor: '#050505',
+            backgroundImage:
+              'radial-gradient(circle at 70% 30%, rgba(225,224,204,0.12) 0%, transparent 45%), ' +
+              'radial-gradient(circle at 30% 80%, rgba(225,224,204,0.08) 0%, transparent 40%), ' +
+              'linear-gradient(rgba(225,224,204,0.03) 1px, transparent 1px), ' +
+              'linear-gradient(90deg, rgba(225,224,204,0.03) 1px, transparent 1px)',
+            backgroundSize: '100% 100%, 100% 100%, 4px 4px, 4px 4px',
+          }}
+        />
+
+        {/* Background video：加载失败或播放失败时透明降级，露出下方备用背景 */}
         <video
+          ref={videoRef}
           autoPlay
           loop
           muted
           playsInline
-          className="absolute inset-0 h-full w-full object-cover"
+          preload="auto"
+          poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23050505'/%3E%3C/svg%3E"
+          className={`absolute inset-0 z-[1] h-full w-full object-cover transition-opacity duration-700 ${videoFailed ? 'opacity-0' : 'opacity-100'}`}
           src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260405_170732_8a9ccda6-5cff-4628-b164-059c500a2b41.mp4"
         />
 

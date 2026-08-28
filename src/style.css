@@ -1660,7 +1660,7 @@ main[data-view="room"] .app-entry-bar {
   }
 
   #app {
-    padding: 24px 14px 96px;
+    padding: 24px 14px calc(68px + env(safe-area-inset-bottom) + 28px);
   }
 
   .hero {
@@ -2506,6 +2506,7 @@ main[data-view="room"] .app-entry-bar {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 4px;
+  min-width: 0;
 }
 
 .dash-cal-weekdays {
@@ -2527,10 +2528,12 @@ main[data-view="room"] .app-entry-bar {
   align-items: stretch;
   justify-content: flex-start;
   gap: 3px;
+  min-width: 0;
   min-height: 64px;
   padding: 5px 3px;
   border: 1px solid transparent;
   border-radius: 10px;
+  overflow: hidden;
 }
 
 .dash-cal-cell.day {
@@ -2551,6 +2554,7 @@ main[data-view="room"] .app-entry-bar {
   flex-direction: column;
   gap: 2px;
   width: 100%;
+  min-width: 0;
 }
 
 .dash-cal-todo {
@@ -2755,7 +2759,7 @@ main[data-view="room"] .app-entry-bar {
 /* ---------- 第 2 屏响应式 ---------- */
 @media (max-width: 768px) {
   .dash-wrap {
-    padding: 24px 14px 96px;
+    padding: 24px 14px calc(68px + env(safe-area-inset-bottom) + 28px);
   }
 
   .dash-greeting {
@@ -2777,16 +2781,62 @@ main[data-view="room"] .app-entry-bar {
 
   .dash-cal-cell {
     min-height: 56px;
+    padding: 4px 2px;
   }
 
   .dash-cal-day {
     font-size: 12.5px;
+    line-height: 1.2;
+  }
+
+  /* 移动端：日历格内待办过长会撑宽列，导致日期数字被挤压/截断。
+     改成只显示小圆点，避免文本撑开单元格，保证 7 列等宽、日期清晰。 */
+  .dash-cal-todo {
+    flex: 0 0 auto;
+    width: 5px;
+    height: 5px;
+    padding: 0;
+    margin: 0 auto;
+    font-size: 0;
+    line-height: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+  }
+
+  .dash-cal-todo.done {
+    background: rgba(225, 224, 204, 0.35);
+    text-decoration: none;
+    opacity: 0.6;
+  }
+
+  .dash-cal-todo-more {
+    font-size: 9px;
+    line-height: 1;
+    color: var(--text-2);
+    text-align: center;
   }
 }
 
 @media (max-width: 480px) {
   .dash-cal-cell {
-    min-height: 48px;
+    min-height: 44px;
+    padding: 3px 1px;
+  }
+
+  .dash-cal-day {
+    font-size: 11.5px;
+  }
+
+  .dash-cal-todo {
+    width: 4px;
+    height: 4px;
+  }
+
+  .dash-cal-todo-more {
+    font-size: 8px;
   }
 
   .dash-confirm-row {
@@ -3455,7 +3505,7 @@ main[data-view="room"] .app-entry-bar {
 /* ---------- 第 4 屏响应式 ---------- */
 @media (max-width: 768px) {
   .proj-wrap {
-    padding: 24px 14px 96px;
+    padding: 24px 14px calc(68px + env(safe-area-inset-bottom) + 28px);
   }
 
   .proj-title {
@@ -4127,7 +4177,7 @@ main[data-view="room"] .app-entry-bar {
 /* ---------- 第 5 屏响应式 ---------- */
 @media (max-width: 768px) {
   .meet-wrap {
-    padding: 24px 14px 96px;
+    padding: 24px 14px calc(68px + env(safe-area-inset-bottom) + 28px);
   }
 
   .meet-title {
@@ -4739,7 +4789,7 @@ main[data-view="room"] .app-entry-bar {
 /* ---------- 第 6 屏响应式 ---------- */
 @media (max-width: 768px) {
   .rep-wrap {
-    padding: 24px 14px 96px;
+    padding: 24px 14px calc(68px + env(safe-area-inset-bottom) + 28px);
   }
 
   .rep-title {
@@ -6228,7 +6278,7 @@ body.open-no-scroll {
 
 @media (max-width: 768px) {
   .open-wrap {
-    padding: 24px 14px 96px;
+    padding: 24px 14px calc(68px + env(safe-area-inset-bottom) + 28px);
   }
 
   .open-title {
@@ -8076,6 +8126,88 @@ a:hover {
   color: rgba(225, 224, 204, 0.62);
   font-size: 12.5px;
   line-height: 1.55;
+}
+
+/* ============================================================
+   移动端性能与流畅度优化
+   ============================================================ */
+
+/* 1. 提升固定/悬浮元素的合成层，避免滚动时重绘 */
+.top-nav,
+#fav-drawer,
+#fav-drawer-mask,
+.dash-cal-pop {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* 2. 移动端移除点击高亮、加快交互响应 */
+@media (pointer: coarse) {
+  a,
+  button,
+  .entry-portal,
+  .dash-cal-cell,
+  .module-card,
+  .job-square,
+  .fav-item {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  /* 复杂背景模糊在低端机上开销大，适当减弱 */
+  .entry-portal,
+  .dash-card,
+  .dash-stat-card,
+  .dash-cal-pop,
+  .module-card,
+  .open-solution-card,
+  .open-book-card {
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+  }
+}
+
+/* 3. 减少动画：尊重系统偏好，并对动画元素统一使用 transform/opacity */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* 4. 首屏 GPU 层提升（video 与叠层） */
+.prisma-hero-screen video,
+.prisma-hero-screen .noise-overlay {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* 5. 主屏在视口外时暂缓渲染，提升长页面滚动性能 */
+.screen {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 500px;
+}
+
+/* 首屏不应用 content-visibility，避免首帧渲染延迟 */
+#screen-1 {
+  content-visibility: visible;
+}
+
+/* 6. 避免移动浏览器底部工具栏导致页面整体上下抖动 */
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
+/* 7. 底部导航已经 fixed，再补一层提升，确保键盘弹出时也稳定 */
+@media (max-width: 768px) {
+  .md\:hidden[aria-label="主导航"] {
+    transform: translateZ(0) translateY(0) !important;
+  }
 }
 .ai-prov-time {
   color: rgba(225, 224, 204, 0.45);

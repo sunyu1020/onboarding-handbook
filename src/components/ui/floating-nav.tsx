@@ -140,9 +140,10 @@ const FloatingNav = () => {
         </button>
       </nav>
 
-      {/* 移动端：底部图标栏（仅在 App 视图渲染，始终可见） */}
+      {/* 移动端：底部图标栏（仅在 App 视图渲染，始终可见、固定到底部） */}
       <nav
-        className="fixed bottom-0 left-0 right-0 z-50 flex h-[68px] items-center justify-around border-t border-[rgba(225,224,204,0.10)] bg-black/92 px-2 backdrop-blur-xl md:hidden"
+        className="fixed bottom-0 left-0 right-0 z-[100] flex h-[68px] items-center justify-around border-t border-[rgba(225,224,204,0.10)] bg-black/92 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl will-change-transform md:hidden"
+        style={{ transform: 'translateZ(0)' }}
         aria-label="主导航"
       >
         {navItems.map((item) => {
