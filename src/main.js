@@ -306,8 +306,7 @@ function demoGenerateWeekly() {
   renderOnboardingProgress()
 }
 
-function demoGenerateUpward(weeklyText) {
-  const snap = buildWeeklySnapshot()
+function buildUpwardText(snap) {
   const job = loadProfile().landingJob
   const L = []
   L.push('【向上汇报 · 给领导的版本】')
@@ -325,7 +324,12 @@ function demoGenerateUpward(weeklyText) {
   L.push('3）下周重点：' + (snap.nextWeek.length ? snap.nextWeek.map((n) => itemTitle(n)).join('、') : '持续推进在手项目'))
   L.push('')
   L.push('—— 以上基于周报原文提炼，细节见周报。')
-  const content = L.join('\n')
+  return L.join('\n')
+}
+
+function demoGenerateUpward(weeklyText) {
+  const snap = buildWeeklySnapshot()
+  const content = buildUpwardText(snap)
   repUpwardEditorEl.value = content
   repUpwardCopyBtn.hidden = false
   repUpwardWechatBtn.hidden = false
@@ -421,7 +425,7 @@ function buildProgressHtml() {
         ? `<div class="onb-memory">🧠 AI 记得你：${memoryBits.join(' · ')}</div>`
         : `<div class="onb-memory onb-memory-empty">🧠 AI 记忆已就绪：你的每一步都会被记住，跨屏协同</div>`
     }
-    ${DEMO_MODE ? `<div class="onb-demo">🧪 演示模式：无需配置 Key，所有 AI 功能均可直接体验</div>` : ''}
+    ${DEMO_MODE ? `<div class="onb-demo">🧪 演示模式：无需配置 Key，所有 AI 功能均可直接体验 <button type="button" id="onb-demo-clear" class="onb-demo-clear">清空示例数据</button></div>` : ''}
   `
 }
 
@@ -3618,10 +3622,35 @@ refreshRepStats()
 updateRepGenerateBtn()
 
 // 切到周报屏时刷新数据，保证工作台最新数据同步到周报
+// 并把已保存的周报/向上汇报回填进编辑器（演示模式预置的示例、以及用户历史生成结果都能直接看到，无需重跑）
+function loadSavedReportIntoEditor() {
+  if (!repEditorEl) return
+  const reports = loadReports()
+  const r = reports.find((x) => x.weekly) || reports[0]
+  if (!r) return
+  if (repEditorEl.value.trim() === '') {
+    repEditorEl.value = r.weekly || ''
+    updateRepEditorClose()
+  }
+  if (repUpwardEditorEl && repUpwardEditorEl.value.trim() === '' && r.upward) {
+    repUpwardEditorEl.value = r.upward
+  }
+  if (r.weekly) {
+    repCopyBtn.hidden = false
+    repCopyWechatBtn.hidden = false
+    repCopyEmailBtn.hidden = false
+  }
+  if (r.upward) {
+    repUpwardCopyBtn.hidden = false
+    repUpwardWechatBtn.hidden = false
+    repUpwardEmailBtn.hidden = false
+  }
+}
 window.addEventListener('hashchange', () => {
   if (window.location.hash.replace('#', '') === 'screen-6') {
     refreshRepStats()
     updateRepGenerateBtn()
+    loadSavedReportIntoEditor()
   }
 })
 
@@ -5233,36 +5262,129 @@ document.addEventListener('keydown', (e) => {
 // ===== 首屏自动展示示例拆解（激活 / aha：reviewer 一进来就看到 AI 价值）=====
 // demo 模式下，若结果区为空则自动渲染一份完整岗位拆解当「门面」，并预填输入框保持连贯；
 // 真实 API 模式（配置了 Key）不自动跑，避免无谓的请求。用户一旦自己操作即被正常覆盖。
+// ===== 演示模式「首屏即满血」：自动播种一整套真实感示例数据 =====
+// 仅在 DEMO_MODE 且对应数据为空时写入，绝不覆盖用户自己产生的数据；
+// 面试官/任何人首次打开（无 Key）即看到完整的拆解、台账、纪要、周报，第一印象不打折。
 function seedDemoLedger() {
   if (!DEMO_MODE) return
-  const todos = loadTodos()
-  const projects = loadProjects()
-  if (todos.length || projects.length) return // 已有数据不覆盖
+  if (loadTodos().length || loadProjects().length) return // 已有数据不覆盖
   const ws = mondayStart().getTime()
   const h = (n) => ws + n * 3600000
   const seedTodos = [
-    { id: 's1', title: '梳理本周产品需求池，输出优先级清单', dueDate: addDaysStr(2), priority: '高', note: '示例台账', done: true, createdAt: h(10), doneAt: h(20) },
-    { id: 's2', title: '跟进 V2.3 上线后核心指标波动，写一页复盘', dueDate: addDaysStr(-1), priority: '中', note: '示例台账', done: false, createdAt: h(12) },
-    { id: 's3', title: '约 mentor 做一次 1:1 对齐入职方向', dueDate: addDaysStr(6), priority: '中', note: '示例台账', done: false, createdAt: h(14) },
+    { id: 's1', title: '梳理本周产品需求池，输出优先级清单', dueDate: addDaysStr(-1), priority: '高', note: '示例台账', done: true, createdAt: h(6), doneAt: h(20) },
+    { id: 's2', title: '输出 V2.3 上线复盘一页纸', dueDate: addDaysStr(-3), priority: '中', note: '示例台账', done: true, createdAt: h(8), doneAt: h(30) },
+    { id: 's3', title: '补充搜索改版交互稿与埋点方案', dueDate: addDaysStr(3), priority: '高', note: '示例台账', done: false, createdAt: h(10) },
+    { id: 's4', title: '跟进核心指标波动，写一页复盘', dueDate: addDaysStr(-1), priority: '中', note: '示例台账', done: false, createdAt: h(12) },
+    { id: 's5', title: '约 mentor 做一次 1:1 对齐入职方向', dueDate: addDaysStr(6), priority: '中', note: '示例台账', done: false, createdAt: h(14) },
   ]
   saveTodos(seedTodos)
   saveProjects([
-    { id: 'p-seed-1', name: '需求优先级看板重构', stage: '进行中', deadline: addDaysStr(7), owner: '我', risks: ['需求方临时加塞，排期可能被冲'], todoIds: [], createdAt: h(8), updatedAt: h(8) },
+    { id: 'p-seed-1', name: '需求优先级看板重构', stage: '进行中', deadline: addDaysStr(7), owner: '我', risks: ['需求方临时加塞，排期可能被冲'], todoIds: [], createdAt: h(4), updatedAt: h(4) },
+    { id: 'p-seed-2', name: '搜索改版（交互细化）', stage: '进行中', deadline: addDaysStr(10), owner: '我', risks: [], todoIds: [], createdAt: h(2), updatedAt: h(2) },
   ])
   if (typeof renderTodoList === 'function') renderTodoList()
   if (typeof renderProjectList === 'function') renderProjectList()
   if (typeof refreshStats === 'function') refreshStats()
 }
 
-function autoShowcaseDemo() {
+function seedDemoMeetings() {
   if (!DEMO_MODE) return
-  if (!resultEl || resultEl.children.length > 0) return
-  const showcase = '产品经理'
-  if (inputEl) inputEl.value = showcase
-  seedDemoLedger()
-  demoJobBreakdown(showcase)
+  if (loadMeetings().length) return
+  const day = 86400000
+  const now = Date.now()
+  const meetings = [
+    {
+      id: 'm-seed-1',
+      title: '产品双周同步会',
+      date: addDaysStr(-2),
+      conclusions: [
+        '本期核心目标对齐：Q3 聚焦「需求交付效率」与「新用户激活」两条主线',
+        'V2.3 已上线，核心指标（次留、人均时长）符合预期，进入稳定观察期',
+        '一致同意把「需求优先级看板」作为本月重点改进项',
+      ],
+      actionItems: [
+        { task: '梳理本周需求池并按优先级排期，周五前同步', owner: '我', deadline: addDaysStr(2), priority: 'high' },
+        { task: '输出 V2.3 上线复盘一页纸', owner: '我', deadline: addDaysStr(4), priority: 'medium' },
+        { task: '约 mentor 做 1:1 对齐入职方向', owner: '我', deadline: addDaysStr(6), priority: 'medium' },
+      ],
+      openQuestions: ['下季度资源是否追加尚未确认，需要领导帮忙拍板'],
+      createdAt: now - 2 * day,
+    },
+    {
+      id: 'm-seed-2',
+      title: '需求评审会（搜索改版）',
+      date: addDaysStr(-4),
+      conclusions: ['搜索改版方案通过初评，进入交互细化', '优先级定为高，纳入本月看板'],
+      actionItems: [
+        { task: '补充搜索改版的交互稿与埋点方案', owner: '我', deadline: addDaysStr(3), priority: 'high' },
+      ],
+      openQuestions: [],
+      createdAt: now - 4 * day,
+    },
+  ]
+  saveMeetings(meetings)
+  if (typeof renderMeetHistory === 'function') renderMeetHistory()
 }
-// autoShowcaseDemo() // 默认不自动展示，输入框下方直接显示岗位库
+
+function seedDemoWeekly() {
+  if (!DEMO_MODE) return
+  if (loadReports().length) return
+  const snap = buildWeeklySnapshot()
+  const weekly = buildWeeklyText(snap)
+  const upward = buildUpwardText(snap)
+  const report = { id: 'r-seed', weekStart: snap.weekStart, weekly, upward, createdAt: Date.now() }
+  saveReports([report])
+  if (repEditorEl) {
+    repEditorEl.value = weekly
+    repCopyBtn.hidden = false
+    repCopyWechatBtn.hidden = false
+    repCopyEmailBtn.hidden = false
+    updateRepEditorClose()
+  }
+  if (repUpwardEditorEl) {
+    repUpwardEditorEl.value = upward
+    repUpwardCopyBtn.hidden = false
+    repUpwardWechatBtn.hidden = false
+    repUpwardEmailBtn.hidden = false
+  }
+  if (typeof renderRepHistory === 'function') renderRepHistory()
+  if (typeof refreshRepStats === 'function') refreshRepStats()
+}
+
+// 一键清空演示数据，恢复初始空白（让面试官可重新以真实身份体验）
+function clearDemoData() {
+  ;[TODOS_KEY, PROJECTS_KEY, MEETINGS_KEY, REPORTS_KEY, LS_KEY, PRESET_FAV_KEY, PROFILE_KEY, ACT_KEY].forEach((k) =>
+    localStorage.removeItem(k),
+  )
+  location.reload()
+}
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'onb-demo-clear') {
+    if (window.confirm('清空演示数据并恢复到初始空白状态？此操作不可撤销。')) clearDemoData()
+  }
+})
+
+// 编排：首屏即播种全套示例 + 关键屏直接展示一份「门面」
+function seedDemoExperience() {
+  if (!DEMO_MODE) return
+  updateProfile({ landingJob: '产品经理', lastRole: '产品' })
+  seedDemoLedger()
+  seedDemoMeetings()
+  seedDemoWeekly()
+  // 岗位拆解屏：直接展示一份完整示例拆解
+  if (resultEl && resultEl.children.length === 0 && inputEl) {
+    inputEl.value = '产品经理'
+    demoJobBreakdown('产品经理')
+  }
+  // 会议纪要屏：直接展示一条示例纪要
+  const meets = loadMeetings()
+  if (meets.length && meetResultEl && meetResultEl.children.length === 0) {
+    renderMeetingResult(meets[0])
+  }
+  renderOnboardingProgress()
+}
+
+seedDemoExperience()
 
 // ===== 登陆进度矩形：渲染真实进度（旧顶部入口条已移除，保留函数供内部调用）=====
 function renderEntryProgress() {

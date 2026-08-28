@@ -8076,6 +8076,22 @@ a:hover {
   font-size: 12px;
   color: rgba(225, 224, 204, 0.7);
 }
+.onb-demo-clear {
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  color: rgba(225, 224, 204, 0.9);
+  background: rgba(225, 224, 204, 0.12);
+  border: 1px solid rgba(225, 224, 204, 0.32);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.onb-demo-clear:hover {
+  background: rgba(225, 224, 204, 0.22);
+  border-color: rgba(225, 224, 204, 0.5);
+}
 
 /* 记忆线索提示（周报/汇报/纪要/困境 顶部，体现「AI 记得你」） */
 .meet-memory-note,
